@@ -23,4 +23,4 @@ No API keys, passwords, .env files, node_modules, private files or generated art
 
 Provide an atomic, credential-free SQL Editor bootstrap generated from both versioned migrations. Matching migration history is a no-op; unrelated public tables or different history are rejected. The integration suite exercises the generated bootstrap with automatic RLS enabled and verifies data preservation and hashes. CI rejects stale generated SQL.
 
-Hosted Auth settings and private Storage upload/sign/download/access-denial are verified. Native PostgreSQL TCP remains unavailable in this cloud environment; the hosted bootstrap still requires execution in the project's SQL Editor and does not prove application connectivity.
+Hosted Auth settings and private Storage upload/sign/download/access-denial are verified. Native PostgreSQL TCP remains unavailable in this cloud environment; the hosted bootstrap has now been executed in the project's SQL Editor and HTTPS checks confirm public plans/add-ons and anonymous access denial, while application database connectivity remains unverified.
