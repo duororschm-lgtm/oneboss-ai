@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: oneboss-core
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: feat/core
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeployTrigger: off
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_PASSWORD
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: MIMO_API_KEY
+        sync: false
+      - key: MIMO_MODEL
+        value: mimo-v2.6-pro
+      - key: ALLOW_SANDBOX
+        value: 'false'

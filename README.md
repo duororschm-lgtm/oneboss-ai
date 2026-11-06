@@ -23,6 +23,7 @@ npm run worker
 
 - [A/B 接口合同与接入说明](docs/PROJECT_CONTRACT.md)
 - [配置、启动、故障恢复与验收](docs/RUNBOOK.md)
+- [A 后端 Docker / Render 开发部署](docs/DEPLOY_RENDER.md)
 - [当前验证证据与未完成项](docs/demo-proof.md)
 - [开源选型记录](docs/opensource-audit-a.md)
 

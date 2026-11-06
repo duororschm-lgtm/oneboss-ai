@@ -7,7 +7,7 @@ B-owned marketing/studio UI and site/poster rendering remain external integratio
 ## Validation
 
 - TypeScript and Next.js production build pass.
-- 34 unit tests and 21 real PostgreSQL integration tests pass.
+- 44 unit tests and 21 real PostgreSQL integration tests pass.
 - Ten concurrent payment confirmations create one event and one entitlement.
 - RLS, cross-tenant reads, direct payment writes, amount tampering, refunds, lease recovery, scoped edits and failed publication rollback are covered.
 - Both migrations execute and repeat successfully; production dependency audit reports no known vulnerabilities.
@@ -24,3 +24,9 @@ No API keys, passwords, .env files, node_modules, private files or generated art
 Provide an atomic, credential-free SQL Editor bootstrap generated from both versioned migrations. Matching migration history is a no-op; unrelated public tables or different history are rejected. The integration suite exercises the generated bootstrap with automatic RLS enabled and verifies data preservation and hashes. CI rejects stale generated SQL.
 
 Hosted Auth settings and private Storage upload/sign/download/access-denial are verified. Native PostgreSQL TCP remains unavailable in this cloud environment; the hosted bootstrap has now been executed in the project's SQL Editor and HTTPS checks confirm public plans/add-ons and anonymous access denial, while application database connectivity remains unverified.
+
+## Container deployment preparation
+
+Add a non-root Docker runtime and Render Free development blueprint. One supervisor starts Next.js and the durable worker; unexpected child exit shuts down the service, graceful shutdown drains both. Database configuration accepts a separate raw password and enforces remote certificate verification, including optional provider CA trust.
+
+The actual image builds and passes local database HTTP/worker/non-root/secret-exclusion checks. Worker failure exits the container with1; graceful shutdown exits0. Render deployment and hosted PostgreSQL TCP/TLS remain pending. No cloud environment draft or publication is changed by this addition.

@@ -1,13 +1,12 @@
 import postgres from 'postgres';
-import { AppError } from './errors';
+import { databaseConfig } from './database-config';
 let db: ReturnType<typeof postgres> | undefined;
 export function database() {
-  if (!process.env.DATABASE_URL) throw new AppError('DATABASE_NOT_CONFIGURED', 503);
-  return (db ??= postgres(process.env.DATABASE_URL, {
-    max: 10,
-    prepare: false,
-    connect_timeout: 10,
-  }));
+  if (!db) {
+    const config = databaseConfig();
+    db = postgres(config.url, config.options);
+  }
+  return db;
 }
 export async function closeDatabase() {
   await db?.end();

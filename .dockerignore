@@ -1,0 +1,16 @@
+.git
+.github
+node_modules
+.next
+.env*
+*.log
+*.pem
+*.key
+*.crt
+*.zip
+coverage
+test-results
+playwright-report
+attachments
+.local
+scratch

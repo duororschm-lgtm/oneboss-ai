@@ -17,7 +17,7 @@
 | 检查 | 结果 |
 |---|---|
 | npm run typecheck | 通过 |
-| npm test | 3个文件，34项通过，0跳过 |
+| npm test | 3个文件，44项通过，0跳过 |
 | npm run test:integration | 真实 PostgreSQL 17，21项通过，0跳过 |
 | npm run build | 生产构建通过，包含 API、/p/[slug]、子页面路由 |
 | npm audit --omit=dev --audit-level=high | 0 个已报告漏洞；发现 Sharp 旧版高危后升级至0.35.5并重新验证 |
@@ -75,3 +75,9 @@ PNG 单元测试实际创建1080×1350测试图并嵌入 QR，使用独立解码
 - 服务端读取 oneboss-private 桶元数据：HTTP200，public=false。
 
 用户截图显示 SQL 初始化结果行；上述 HTTPS 核验确认表和访问授权已实际生效。未显示或记录任何凭据。当前仍无 DATABASE_URL，TCP代理仍不可用，尚不能宣称 A 应用已连接托管业务数据库或跑通订单到交付的全链路。
+
+### Docker 开发部署准备（2026-11-07）
+
+新增 Dockerfile、Render Free Web Service 蓝图和双进程启动器。44项单元测试、21项数据库集成测试通过；Docker内生产构建通过。以node非root用户运行真实镜像，验证套餐查询、未登录请求拒绝及worker存活；未嵌入.env或临时构建CA。意外终止worker会停止HTTP服务并退出1，正常平台停止则退出0。
+
+数据库支持单独的原始DATABASE_PASSWORD，避免手机手动URL编码；远程TLS强制验证，URL参数不能降低证书验证。Docker仅在本地测试数据库上运行，Render账号/服务尚未创建，托管Postgres原生TLS握手仍未实测，不能称为已经部署上线。

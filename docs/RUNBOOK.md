@@ -7,6 +7,8 @@
 | 配置 | 用途 |
 |---|---|
 | DATABASE_URL | 服务器 Postgres 连接；迁移/可信业务事务，禁止暴露浏览器 |
+| DATABASE_PASSWORD | 可选的独立原始数据库密码，覆盖URI密码，避免手动URL编码 |
+| DATABASE_CA_CERT | 可选的可信数据库CA PEM，远程TLS始终验证 |
 | NEXT_PUBLIC_SUPABASE_URL | Supabase 项目 URL |
 | NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY | Supabase 公开客户端键；身份 token 的远程验证 |
 | SUPABASE_SERVICE_ROLE_KEY | 仅服务器私有 Storage 访问，禁止客户端使用 |
@@ -48,6 +50,10 @@ Node/SDK 的 HTTPS 访问保留代理与 TLS 验证；代理凭据占位符必�
 更新版本化迁移后运行 `npm run db:bootstrap:generate` 重新生成该文件；不要手改生成文件。此脚本只供空项目初始化，不是升级已有数据库的替代工具。
 
 当前云环境的 TCP 访问列表为空，指定 TCP 代理端口拒绝连接；允许 Supabase HTTPS 域名并不等于允许数据库 TCP。SQL 初始化成功也不能证明应用后台已连接托管数据库。原生运行仍需部署环境允许相应数据库主机/端口，并安全配置 DATABASE_URL，保持 TLS 验证。
+
+## 单容器开发部署
+
+部署文件和配置步骤见 DEPLOY_RENDER.md。`npm run start:service` 同时运行生产HTTP服务和worker；任一子进程退出将终止整个服务，让平台恢复，防止HTTP存活却无人处理任务。Codex的TCP限制不因添加HTTPS域名而解除，托管原生连接需在支持它的部署环境验证。
 
 ## 首个可验证订单
 
