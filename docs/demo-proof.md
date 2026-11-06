@@ -50,7 +50,7 @@ PNG 单元测试实际创建1080×1350测试图并嵌入 QR，使用独立解码
 
 ## 未执行的外部验收
 
-- 托管或完整本地 Supabase Auth/Storage 的真实身份、文件上传/签名下载联调。
+- Supabase Auth 的真实用户登录与完整应用授权联调；Auth settings 可达，Storage 上传/签名下载/匿名拦截已单独验证。
 - 真实生产订单的 MiMo 编排产物兼容性与持久化运行记录；基础 JSON、tool calling 和图片输入识别现已通过。
 - B 审核共享合同、交付真实网站/海报渲染器及创意规则。
 - 正式 HTTPS 部署的375/768/1280px浏览器交互检查、中文海报排版和手机扫码。
@@ -65,4 +65,13 @@ PNG 单元测试实际创建1080×1350测试图并嵌入 QR，使用独立解码
 
 本环境 PostgreSQL TCP 访问列表为空，指定 TCP 代理拒绝连接；原生数据库连接仍未就绪。新增 docs/setup-supabase.sql 供用户在新项目的官方SQL Editor运行，不修改网络路由或绕过代理。
 
-初始化脚本已在本地PostgreSQL17验证，模拟开启自动RLS，21项集成测试通过；重复执行保留业务数据并匹配迁移hash；已有无关业务表时拒绝并回滚。托管SQL尚未执行，等待用户在正确项目运行后验证，不能将本地通过视为托管建表完成。
+初始化脚本已在本地PostgreSQL17验证，模拟开启自动RLS，21项集成测试通过；重复执行保留业务数据并匹配迁移hash；已有无关业务表时拒绝并回滚。用户已在 OneBoss 托管项目的 SQL Editor 成功执行初始化脚本；已通过 HTTPS Data API 独立核对活跃套餐和增项，并确认匿名订单及迁移记录访问被拒绝。原生应用连接仍未验证。
+
+### 托管建表后接口核验（2026-11-07）
+
+- 使用可发布凭据读取 service_plans：HTTP200，恰好返回 basic=19900、professional=49900，未返回停用的 custom 套餐。
+- 读取 service_addons：HTTP200，返回3条已配置增项。
+- 相同匿名身份读取 service_orders、oneboss_migrations：均HTTP401，访问被拒绝。
+- 服务端读取 oneboss-private 桶元数据：HTTP200，public=false。
+
+用户截图显示 SQL 初始化结果行；上述 HTTPS 核验确认表和访问授权已实际生效。未显示或记录任何凭据。当前仍无 DATABASE_URL，TCP代理仍不可用，尚不能宣称 A 应用已连接托管业务数据库或跑通订单到交付的全链路。
