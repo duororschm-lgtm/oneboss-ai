@@ -21,7 +21,7 @@
 网络：MiMo 需要 api.xiaomimimo.com；GitHub PR 需要 api.github.com；Supabase 需要实际项目域名；公网核验需要 APP_URL 主机。
 原始 TCP PostgreSQL 连接需要环境允许相应主机/端口；HTTPS 代理的允许列表不能代替数据库 TCP 权限。
 托管 Postgres 使用服务提供方要求的 TLS 验证配置和可信 CA，不要通过关闭证书检查解决问题。
-本次环境草稿已不可编辑，新增 MiMo secret/domain 要求未能保存。需在当前环境设置安全配置，不要重复创建或在聊天发送密钥。
+历史草稿编辑限制已由用户发布新配置解决，MiMo 密钥与模型变量已安全注入并通过基础真实调用。后续凭据仍需在环境设置配置，不在聊天发送或存进代码。
 
 ## 初始化与启动
 

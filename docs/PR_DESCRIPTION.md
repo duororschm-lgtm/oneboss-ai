@@ -7,7 +7,7 @@ B-owned marketing/studio UI and site/poster rendering remain external integratio
 ## Validation
 
 - TypeScript and Next.js production build pass.
-- 29 unit tests and 20 real PostgreSQL integration tests pass.
+- 34 unit tests and 20 real PostgreSQL integration tests pass.
 - Ten concurrent payment confirmations create one event and one entitlement.
 - RLS, cross-tenant reads, direct payment writes, amount tampering, refunds, lease recovery, scoped edits and failed publication rollback are covered.
 - Both migrations execute and repeat successfully; production dependency audit reports no known vulnerabilities.
@@ -15,6 +15,6 @@ B-owned marketing/studio UI and site/poster rendering remain external integratio
 
 ## Remaining integration prerequisites
 
-Real MiMo smoke checks fail with MIMO_NOT_CONFIGURED until the existing account key and model ID are securely injected. Full Supabase Auth/Storage, B renderer, public HTTPS/mobile/Chinese typography/QR and delivery acceptance remain unverified. See docs/demo-proof.md and docs/RUNBOOK.md. Shared contract v1 awaits B review.
+Real MiMo smoke checks now pass for JSON, native read-only tool calling and image color recognition after secure credential injection. Native tool calls are requested separately from JSON text mode and validated against a strict allowlist; provider request IDs are recorded without secrets. Full Supabase Auth/Storage, B renderer, public HTTPS/mobile/Chinese typography/QR and delivery acceptance remain unverified. See docs/demo-proof.md and docs/RUNBOOK.md. Shared contract v1 awaits B review.
 
 No API keys, passwords, .env files, node_modules, private files or generated artifacts are included. .env.example contains empty placeholders only.

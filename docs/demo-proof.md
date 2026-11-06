@@ -17,7 +17,7 @@
 | 检查 | 结果 |
 |---|---|
 | npm run typecheck | 通过 |
-| npm test | 3个文件，29项通过，0跳过 |
+| npm test | 3个文件，34项通过，0跳过 |
 | npm run test:integration | 真实 PostgreSQL 17，20项通过，0跳过 |
 | npm run build | 生产构建通过，包含 API、/p/[slug]、子页面路由 |
 | npm audit --omit=dev --audit-level=high | 0 个已报告漏洞；发现 Sharp 旧版高危后升级至0.35.5并重新验证 |
@@ -30,16 +30,28 @@
 模型生成/修改的集成用例使用受控 mock，仅验证真实数据库中的保存与状态行为。发布失败测试模拟网络失败；不是公网部署证明。
 PNG 单元测试实际创建1080×1350测试图并嵌入 QR，使用独立解码器解码；这是验证器测试，不是 B 的客户海报。
 
-## 实际执行失败 / 未具备条件
+## 历史阻塞及当前进展
 
-`npm run smoke:mimo` 已执行并返回非零：json、tools、vision 均为 MIMO_NOT_CONFIGURED。当前环境未注入 MIMO_API_KEY 和 MIMO_MODEL；没有生成真实 MiMo run ID。
+初次 `npm run smoke:mimo` 因未配置返回 MIMO_NOT_CONFIGURED。用户发布安全配置后，平台确认密钥与模型变量 ready，已完成三项真实 MiMo 调用。
 
-GitHub API 的 CONNECT 请求返回403 Forbidden，环境配置草稿又不可编辑，新增域名/secret配置保存未确认。Git HTTPS 读取可用；PR 创建结果以交付消息及实际 GitHub 链接为准。
+原生工具测试最初因 JSON 文本模式与 native tool calling 冲突未通过；修正请求模式、限制只读工具名称及空参数后通过。未执行任何模型生成的数据库写入、支付或发布工具。
+
+2026-11-06 真实 API 验证记录（不是数据库 agent_runs ID）：
+
+| 检查 | 结果 | Token总量 | Provider request ID |
+|---|---|---:|---|
+| JSON解析及Schema | 通过 | 161 | ada2e9ab-9b89-46a4-94a4-b482d9d4cb5b_d75e884f1b244274a3f554521f450880 |
+| 原生只读函数调用 | 通过 | 194 | a98034e6-b000-4338-829d-00c49aa2f629_e5ccae58732a4b8682afacc5e984cbf5 |
+| 图片内容识别 | 通过 | 190 | 84a4e9db-c0fb-416c-93f9-f274fe6f576e_3813856171944246be9fa5c77d7853c2 |
+
+图片测试随机生成红/绿/蓝色块，模型输出三选一，程序独立比对实际颜色；不再以仅接受图片请求作为图片理解通过的证据。
+
+历史 GitHub API 域名拒绝已由用户添加允许域名并发布解决。目前可读取 PR #1；PR 仍开放，代码推送不代表已合并。
 
 ## 未执行的外部验收
 
 - 托管或完整本地 Supabase Auth/Storage 的真实身份、文件上传/签名下载联调。
-- 真实 MiMo 账号的 JSON、tool calling、图片理解、用量及产物兼容性。
+- 真实生产订单的 MiMo 编排产物兼容性与持久化运行记录；基础 JSON、tool calling 和图片输入识别现已通过。
 - B 审核共享合同、交付真实网站/海报渲染器及创意规则。
 - 正式 HTTPS 部署的375/768/1280px浏览器交互检查、中文海报排版和手机扫码。
 - 真实客户网站URL、客户PNG、ZIP下载与端到端客户验收。
