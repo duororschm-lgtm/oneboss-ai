@@ -30,7 +30,17 @@ beforeAll(async () => {
   await db.unsafe(
     "create schema if not exists auth; do $$ begin if not exists(select 1 from pg_roles where rolname='anon') then create role anon nologin; end if; if not exists(select 1 from pg_roles where rolname='authenticated') then create role authenticated nologin; end if; end $$; create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$; grant usage on schema auth to anon, authenticated; grant execute on function auth.uid() to authenticated;",
   );
-  await db.unsafe(await readFile('supabase/migrations/202611060001_core.sql', 'utf8'));
+  // Match the new project's automatic-RLS setting, without supplying real Supabase credentials.
+  await db.unsafe(`create function public.test_auto_rls() returns event_trigger language plpgsql as $test_rls$
+    declare cmd record; begin
+      for cmd in select * from pg_event_trigger_ddl_commands() loop
+        if cmd.object_type='table' and cmd.schema_name='public' then
+          execute 'alter table ' || cmd.object_identity || ' enable row level security';
+        end if;
+      end loop;
+    end $test_rls$;
+    create event trigger test_auto_rls_on_create on ddl_command_end when tag in ('CREATE TABLE') execute function public.test_auto_rls();`);
+  await applyBootstrap();
   orgId = (await core.createOrganization(owner, 'Test organization')).id;
   await db`insert into memberships(org_id,user_id,role) values(${orgId},${staff.userId},'member')`;
   await db`insert into platform_admins(user_id) values(${staff.userId})`;
@@ -48,6 +58,23 @@ describe.sequential('real PostgreSQL business invariants', () => {
     const saved = await transaction(owner, (tx) => core.order(tx, owner, orderId));
     expect(saved.amount_minor).toBe(19900);
     expect(saved.plan_snapshot.price_minor).toBe(19900);
+  });
+  it('SQL Editor bootstrap is repeatable and preserves business data and migration hashes', async () => {
+    await applyBootstrap();
+    const [saved] = await db`select amount_minor from service_orders where id=${orderId}`;
+    expect(saved.amount_minor).toBe(19900);
+    const [plan] = await db`select price_minor from service_plans where code='basic'`;
+    expect(plan.price_minor).toBe(29900);
+    const history = await db`select name,hash from oneboss_migrations order by name`;
+    expect(history).toHaveLength(2);
+    for (const migration of history) {
+      const { createHash } = await import('node:crypto');
+      expect(migration.hash).toBe(
+        createHash('sha256')
+          .update(await readFile('supabase/migrations/' + migration.name, 'utf8'))
+          .digest('hex'),
+      );
+    }
   });
   it('prices add-ons on the server and snapshots their entitlements', async () => {
     const q = await transaction(owner, (tx) =>
@@ -411,3 +438,15 @@ describe.sequential('real PostgreSQL business invariants', () => {
     ).rejects.toThrow('REFUND_NOT_PENDING');
   });
 });
+
+async function applyBootstrap() {
+  const connection = await db.reserve();
+  try {
+    await connection.unsafe(await readFile('docs/setup-supabase.sql', 'utf8'));
+  } catch (error) {
+    await connection.unsafe('rollback');
+    throw error;
+  } finally {
+    await connection.release();
+  }
+}

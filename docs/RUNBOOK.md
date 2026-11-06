@@ -37,6 +37,18 @@
 服务不自动创建真实收款渠道，也不自动采购域名/部署账号。
 Node/SDK 的 HTTPS 访问保留代理与 TLS 验证；代理凭据占位符必须通过指定 HTTPS 目的地主机使用。
 
+## 通过 SQL Editor 初始化空的托管项目
+
+如果当前开发环境没有可用的 PostgreSQL TCP 通路，可在 Supabase 自带 SQL Editor 执行 `docs/setup-supabase.sql`。这通过供应商控制台操作，不会绕过云环境网络策略。
+
+确认选中的是刚创建的 OneBoss 项目，复制该文件的全部原文到 SQL Editor，使用 postgres 角色运行。文件不含密码或 API Key，不需要填写凭据。整份脚本在同一事务中创建业务表、RLS和最小权限，并记录与命令行迁移器一致的SHA256。
+
+已有相同版本的迁移会安全跳过且保留数据；发现其他 public 表/视图或不同迁移记录则拒绝，不能通过删旧表来强行继续。失败时全部回滚。后续有合法 TCP 通路时，`npm run db:migrate` 可读取相同记录而不重复建表。
+
+更新版本化迁移后运行 `npm run db:bootstrap:generate` 重新生成该文件；不要手改生成文件。此脚本只供空项目初始化，不是升级已有数据库的替代工具。
+
+当前云环境的 TCP 访问列表为空，指定 TCP 代理端口拒绝连接；允许 Supabase HTTPS 域名并不等于允许数据库 TCP。SQL 初始化成功也不能证明应用后台已连接托管数据库。原生运行仍需部署环境允许相应数据库主机/端口，并安全配置 DATABASE_URL，保持 TLS 验证。
+
 ## 首个可验证订单
 
 使用 Supabase 登录得到 access token；客户端不使用 service-role。下列操作均由真实 API/数据库执行，不能把测试 fixture 当成真实客户订单。

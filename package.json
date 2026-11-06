@@ -15,7 +15,8 @@
     "db:migrate": "tsx --env-file-if-exists=.env.local scripts/migrate.ts",
     "worker": "tsx --env-file-if-exists=.env.local scripts/worker.ts",
     "smoke:mimo": "tsx --env-file-if-exists=.env.local scripts/smoke-mimo.ts",
-    "smoke:public": "tsx --env-file-if-exists=.env.local scripts/smoke-public.ts"
+    "smoke:public": "tsx --env-file-if-exists=.env.local scripts/smoke-public.ts",
+    "db:bootstrap:generate": "tsx scripts/generate-supabase-bootstrap.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.0.0",

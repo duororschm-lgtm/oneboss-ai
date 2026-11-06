@@ -27,6 +27,10 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Verify SQL Editor bootstrap matches migrations
+        run: |
+          npm run db:bootstrap:generate
+          git diff --exit-code -- docs/setup-supabase.sql
       - run: npm run typecheck
       - run: npm test
       - run: npm run test:integration

@@ -7,7 +7,7 @@ B-owned marketing/studio UI and site/poster rendering remain external integratio
 ## Validation
 
 - TypeScript and Next.js production build pass.
-- 34 unit tests and 20 real PostgreSQL integration tests pass.
+- 34 unit tests and 21 real PostgreSQL integration tests pass.
 - Ten concurrent payment confirmations create one event and one entitlement.
 - RLS, cross-tenant reads, direct payment writes, amount tampering, refunds, lease recovery, scoped edits and failed publication rollback are covered.
 - Both migrations execute and repeat successfully; production dependency audit reports no known vulnerabilities.
@@ -18,3 +18,9 @@ B-owned marketing/studio UI and site/poster rendering remain external integratio
 Real MiMo smoke checks now pass for JSON, native read-only tool calling and image color recognition after secure credential injection. Native tool calls are requested separately from JSON text mode and validated against a strict allowlist; provider request IDs are recorded without secrets. Full Supabase Auth/Storage, B renderer, public HTTPS/mobile/Chinese typography/QR and delivery acceptance remain unverified. See docs/demo-proof.md and docs/RUNBOOK.md. Shared contract v1 awaits B review.
 
 No API keys, passwords, .env files, node_modules, private files or generated artifacts are included. .env.example contains empty placeholders only.
+
+## Hosted database initialization
+
+Provide an atomic, credential-free SQL Editor bootstrap generated from both versioned migrations. Matching migration history is a no-op; unrelated public tables or different history are rejected. The integration suite exercises the generated bootstrap with automatic RLS enabled and verifies data preservation and hashes. CI rejects stale generated SQL.
+
+Hosted Auth settings and private Storage upload/sign/download/access-denial are verified. Native PostgreSQL TCP remains unavailable in this cloud environment; the hosted bootstrap still requires execution in the project's SQL Editor and does not prove application connectivity.
