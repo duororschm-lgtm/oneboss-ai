@@ -145,6 +145,14 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
                 status: d.status,
                 acceptedAt: d.accepted_at,
                 zipDownloadUrl: await signed(d.zip_path),
+                posterDownloads: await Promise.all(
+                  (d.manifest.posters as { path: string }[]).map(async (poster) => ({
+                    path: poster.path,
+                    url: await signed(
+                      `${d.zip_path.slice(0, d.zip_path.lastIndexOf('/'))}/${poster.path}`,
+                    ),
+                  })),
+                ),
                 expiresIn: 300,
               };
             }),

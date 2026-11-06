@@ -7,7 +7,7 @@ B-owned marketing/studio UI and site/poster rendering remain external integratio
 ## Validation
 
 - TypeScript and Next.js production build pass.
-- 29 unit tests and 19 real PostgreSQL integration tests pass.
+- 29 unit tests and 20 real PostgreSQL integration tests pass.
 - Ten concurrent payment confirmations create one event and one entitlement.
 - RLS, cross-tenant reads, direct payment writes, amount tampering, refunds, lease recovery, scoped edits and failed publication rollback are covered.
 - Both migrations execute and repeat successfully; production dependency audit reports no known vulnerabilities.

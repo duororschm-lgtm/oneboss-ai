@@ -8,7 +8,8 @@ import * as gateway from '../../src/lib/mimo/gateway';
 import * as network from '../../src/lib/security/network';
 import { AppError } from '../../src/lib/core/errors';
 import * as auth from '../../src/lib/security/auth';
-import { POST } from '../../src/app/api/[...path]/route';
+import * as files from '../../src/lib/core/storage';
+import { GET, POST } from '../../src/app/api/[...path]/route';
 import { fixture } from '../fixtures';
 const url = process.env.TEST_DATABASE_URL;
 if (!url)
@@ -347,6 +348,40 @@ describe.sequential('real PostgreSQL business invariants', () => {
         )
       ).payState,
     ).toBe('PAID');
+  });
+  it('authorizes private poster and ZIP downloads before signing', async () => {
+    const prefix = `${orgId}/${projectId}/deliveries/1/test`;
+    await db`insert into deliveries(org_id,project_id,revision,manifest,zip_path) values(${orgId},${projectId},1,${db.json({ posters: [{ path: 'posters/test.png' }] })},${prefix + '/delivery.zip'})`;
+    const identity = vi.spyOn(auth, 'authenticate').mockResolvedValue(stranger);
+    const signer = vi
+      .spyOn(files, 'signed')
+      .mockImplementation(async (path) => 'https://signed.example/' + path);
+    const context = {
+      params: Promise.resolve({ path: ['core', 'projects', projectId, 'delivery'] }),
+    };
+    try {
+      const denied = await GET(
+        new Request('http://localhost/api/core/projects/' + projectId + '/delivery'),
+        context,
+      );
+      expect(denied.status).toBe(403);
+      expect(signer).not.toHaveBeenCalled();
+      identity.mockResolvedValue(owner);
+      const allowed = await GET(
+        new Request('http://localhost/api/core/projects/' + projectId + '/delivery'),
+        context,
+      );
+      expect(allowed.status).toBe(200);
+      const body = await allowed.json();
+      expect(body.expiresIn).toBe(300);
+      expect(body.posterDownloads[0].url).toBe(
+        'https://signed.example/' + prefix + '/posters/test.png',
+      );
+      expect(signer).toHaveBeenCalledTimes(2);
+    } finally {
+      identity.mockRestore();
+      signer.mockRestore();
+    }
   });
   it('refund request revokes production but is not a completed refund', async () => {
     const refund = await transaction(owner, (tx) => core.requestRefund(tx, owner, orderId, 19900));

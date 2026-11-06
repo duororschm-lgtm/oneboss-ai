@@ -71,7 +71,7 @@ POST 使用 JSON，素材上传使用原始二进制。请求体拒绝额外字�
 | POST /api/core/projects/:id/publish | `{revision}`，返回发布任务，异步 HTTP 验证及失败回退 |
 | POST /api/core/projects/:id/rollback | `{revision}`，与发布同审批和权限门禁，拒绝过时事实 |
 | POST /api/core/projects/:id/delivery | `{}`，需 HTTP、浏览器检查与真实文件验收 |
-| GET /api/core/projects/:id/delivery | manifest、5分钟签名 ZIP 链接与验收状态 |
+| GET /api/core/projects/:id/delivery | manifest、5分钟签名 ZIP/单张海报链接（posterDownloads）与验收状态 |
 | POST /api/core/projects/:id/accept | `{manifestVersion}`，只验收当前发布且事实未过时的交付 |
 
 素材权限及下载权限在服务器校验，不能靠隐藏按钮。重复 JSON POST 使用相同 Idempotency-Key 和同一 body；相同 key 不同内容返回 409。
