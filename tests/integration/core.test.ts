@@ -1,0 +1,378 @@
+import { beforeAll, afterAll, describe, it, expect, vi } from 'vitest';
+import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { database, closeDatabase, transaction } from '../../src/lib/core/db';
+import * as core from '../../src/lib/core/service';
+import { claimRun, runOne } from '../../src/lib/workflows/runner';
+import * as gateway from '../../src/lib/mimo/gateway';
+import * as network from '../../src/lib/security/network';
+import { AppError } from '../../src/lib/core/errors';
+import * as auth from '../../src/lib/security/auth';
+import { POST } from '../../src/app/api/[...path]/route';
+import { fixture } from '../fixtures';
+const url = process.env.TEST_DATABASE_URL;
+if (!url)
+  throw new Error(
+    'TEST_DATABASE_URL required: use a disposable PostgreSQL database, never production',
+  );
+process.env.DATABASE_URL = url;
+process.env.ALLOW_SANDBOX = 'true';
+const owner = { userId: randomUUID() },
+  stranger = { userId: randomUUID() },
+  staff = { userId: randomUUID() };
+let orgId: string, orderId: string, projectId: string, attemptId: string;
+const db = database();
+beforeAll(async () => {
+  // Refuse to migrate a database with any existing project schema.
+  const [existing] = await db`select to_regclass('public.organizations') present`;
+  if (existing.present) throw new Error('Use an EMPTY disposable test database');
+  await db.unsafe(
+    "create schema if not exists auth; do $$ begin if not exists(select 1 from pg_roles where rolname='anon') then create role anon nologin; end if; if not exists(select 1 from pg_roles where rolname='authenticated') then create role authenticated nologin; end if; end $$; create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$; grant usage on schema auth to anon, authenticated; grant execute on function auth.uid() to authenticated;",
+  );
+  await db.unsafe(await readFile('supabase/migrations/202611060001_core.sql', 'utf8'));
+  orgId = (await core.createOrganization(owner, 'Test organization')).id;
+  await db`insert into memberships(org_id,user_id,role) values(${orgId},${staff.userId},'member')`;
+  await db`insert into platform_admins(user_id) values(${staff.userId})`;
+});
+afterAll(async () => {
+  await closeDatabase();
+});
+describe.sequential('real PostgreSQL business invariants', () => {
+  it('prices on server and freezes order snapshot', async () => {
+    const q = await transaction(owner, (tx) => core.createQuote(tx, orgId, 'basic'));
+    const o = await transaction(owner, (tx) => core.createOrder(tx, orgId, q.id, true));
+    orderId = o.id;
+    expect(o.amount_minor).toBe(19900);
+    await db`update service_plans set price_minor=29900 where code='basic'`;
+    const saved = await transaction(owner, (tx) => core.order(tx, owner, orderId));
+    expect(saved.amount_minor).toBe(19900);
+    expect(saved.plan_snapshot.price_minor).toBe(19900);
+  });
+  it('prices add-ons on the server and snapshots their entitlements', async () => {
+    const q = await transaction(owner, (tx) =>
+      core.createQuote(tx, orgId, 'basic', [{ code: 'extra-poster', qty: 2 }]),
+    );
+    expect(q.amount_minor).toBe(49700);
+    expect(q.plan_snapshot.poster_count).toBe(4);
+    const o = await transaction(owner, (tx) => core.createOrder(tx, orgId, q.id, true));
+    const items = await db`select * from service_order_items where order_id=${o.id}`;
+    expect(items.length).toBe(2);
+    expect(items.reduce((n, x) => n + x.total_minor, 0)).toBe(o.amount_minor);
+    await expect(
+      transaction(owner, (tx) =>
+        core.createQuote(tx, orgId, 'basic', [{ code: 'unknown', qty: 1 }]),
+      ),
+    ).rejects.toThrow('ADDON_UNAVAILABLE');
+  });
+  it('HTTP API rejects client-supplied amounts and forged webhooks', async () => {
+    const spy = vi.spyOn(auth, 'authenticate').mockResolvedValue(owner);
+    try {
+      const request = new Request('http://localhost/api/commerce/quotes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'http-test-123' },
+        body: JSON.stringify({ orgId, planCode: 'basic', amountMinor: 0 }),
+      });
+      const result = await POST(request, {
+        params: Promise.resolve({ path: ['commerce', 'quotes'] }),
+      });
+      expect(result.status).toBe(400);
+      expect((await result.json()).error.code).toBe('VALIDATION_FAILED');
+      const webhook = await POST(
+        new Request('http://localhost/api/commerce/payments/webhook/stripe', { method: 'POST' }),
+        { params: Promise.resolve({ path: ['commerce', 'payments', 'webhook', 'stripe'] }) },
+      );
+      expect(webhook.status).toBe(503);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+  it('denies other tenant access and unpaid production', async () => {
+    await expect(transaction(stranger, (tx) => core.order(tx, stranger, orderId))).rejects.toThrow(
+      'FORBIDDEN',
+    );
+    await expect(
+      transaction(owner, (tx) => core.createProject(tx, owner, orderId)),
+    ).rejects.toThrow('PAYMENT_REQUIRED');
+  });
+  it('does not let manual mode authorize a demo order', async () => {
+    await expect(
+      transaction(owner, (tx) => core.checkout(tx, owner, orderId, 'manual_verified')),
+    ).rejects.toThrow('DEMO_REQUIRES_SANDBOX');
+  });
+  it('creates a labeled sandbox attempt', async () => {
+    const result = await transaction(owner, (tx) => core.checkout(tx, owner, orderId, 'sandbox'));
+    attemptId = result.attempt.id;
+    expect(result.isDemo).toBe(true);
+  });
+  it('rejects wrong amount', async () => {
+    await expect(
+      transaction(owner, (tx) =>
+        core.confirmPayment(
+          tx,
+          owner,
+          orderId,
+          {
+            attemptId,
+            eventId: 'bad-amount-1',
+            amountMinor: 0,
+            currency: 'CNY',
+            evidenceRef: 'sandbox-test',
+          },
+          'sandbox',
+        ),
+      ),
+    ).rejects.toThrow('AMOUNT_MISMATCH');
+  });
+  it('ten concurrent identical confirmations grant exactly one entitlement', async () => {
+    const input = {
+      attemptId,
+      eventId: 'sandbox-event-1',
+      amountMinor: 19900,
+      currency: 'CNY' as const,
+      evidenceRef: 'sandbox-test',
+    };
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () =>
+        transaction(owner, (tx) => core.confirmPayment(tx, owner, orderId, input, 'sandbox')),
+      ),
+    );
+    expect(results.every((x) => x.payState === 'PAID')).toBe(true);
+    const [{ n }] =
+      await db`select count(*)::int n from project_entitlements where order_id=${orderId}`;
+    expect(n).toBe(1);
+    const [{ events }] =
+      await db`select count(*)::int events from payment_events where order_id=${orderId}`;
+    expect(events).toBe(1);
+  });
+  it('creates exactly one project from the authorized order', async () => {
+    const p = await transaction(owner, (tx) => core.createProject(tx, owner, orderId));
+    projectId = p.id;
+    expect((await transaction(owner, (tx) => core.createProject(tx, owner, orderId))).id).toBe(
+      projectId,
+    );
+  });
+  it('idempotency caches committed results and detects payload changes', async () => {
+    let executions = 0;
+    const run = () =>
+      core.idempotent(owner, 'test-key-123', 'test', { a: 1 }, orgId, async () => ({
+        value: ++executions,
+      }));
+    expect(await run()).toEqual(await run());
+    expect(executions).toBe(1);
+    await expect(
+      core.idempotent(owner, 'test-key-123', 'test', { a: 2 }, orgId, async () => ({})),
+    ).rejects.toThrow('IDEMPOTENCY_CONFLICT');
+  });
+  it('RLS denies stranger reads and direct authenticated writes', async () => {
+    await db.begin(async (tx) => {
+      await tx`select set_config('request.jwt.claim.sub',${stranger.userId},true)`;
+      await tx.unsafe('set local role authenticated');
+      expect((await tx`select * from service_orders`).length).toBe(0);
+      expect((await tx`select * from projects`).length).toBe(0);
+      expect((await tx`select * from project_entitlements`).length).toBe(0);
+    });
+    await expect(
+      db.begin(async (tx) => {
+        await tx`select set_config('request.jwt.claim.sub',${owner.userId},true)`;
+        await tx.unsafe('set local role authenticated');
+        await tx`update service_orders set pay_state='PAID' where id=${orderId}`;
+      }),
+    ).rejects.toThrow('permission denied');
+  });
+  it('RLS permits only tenant read access', async () => {
+    await db.begin(async (tx) => {
+      await tx`select set_config('request.jwt.claim.sub',${owner.userId},true)`;
+      await tx.unsafe('set local role authenticated');
+      expect((await tx`select * from service_orders`).length).toBe(2);
+    });
+  });
+  it('uses immutable fact snapshots and invalidates prior approval', async () => {
+    const f = fixture();
+    const input = {
+      products: [{ id: f.productId, name: '椅子', description: '' }],
+      facts: [f.fact],
+      brief: {
+        projectId,
+        organizationId: orgId,
+        productIds: [f.productId],
+        objective: '宣传',
+        confirmedFacts: [f.factId],
+        assetRefs: [],
+        preferredStyles: [],
+        restrictions: [],
+        deliverables: { site: true as const, posterCount: 2, xhsCopy: true as const },
+        approval: 'pending' as const,
+      },
+    };
+    const first = await transaction(owner, (tx) => core.saveIntake(tx, owner, projectId, input));
+    expect(first.facts[0].version).toBe(1);
+    await transaction(owner, (tx) => core.approveBrief(tx, owner, projectId, first.brief.revision));
+    const second = await transaction(owner, (tx) => core.saveIntake(tx, owner, projectId, input));
+    expect(second.facts[0].version).toBe(2);
+    expect(first.facts[0].id).not.toBe(second.facts[0].id);
+    await expect(
+      transaction(owner, (tx) => core.approveBrief(tx, owner, projectId, first.brief.revision)),
+    ).rejects.toThrow('STALE_BRIEF');
+  });
+  it('reclaims crashed jobs with fencing tokens', async () => {
+    const r = await transaction(owner, (tx) =>
+      core.enqueue(tx, owner, projectId, 'intake', { customerInput: 'test' }),
+    );
+    const first = await claimRun();
+    expect(first.id).toBe(r.id);
+    await db`update agent_runs set lease_until=now()-interval '1 minute' where id=${r.id}`;
+    const second = await claimRun();
+    expect(second.id).toBe(first.id);
+    expect(second.lease_token).not.toBe(first.lease_token);
+    expect(second.attempt).toBe(2);
+    expect(
+      (
+        await db`update agent_runs set output='{}'::jsonb where id=${r.id} and lease_token=${first.lease_token}`
+      ).count,
+    ).toBe(0);
+    await db`update agent_runs set status='FAILED' where id=${r.id}`;
+  });
+  it('marks missing model credentials as failure, never fake success', async () => {
+    delete process.env.MIMO_API_KEY;
+    delete process.env.MIMO_MODEL;
+    const r = await transaction(owner, (tx) =>
+      core.enqueue(tx, owner, projectId, 'intake', { customerInput: 'test' }),
+    );
+    await runOne();
+    const [saved] = await db`select status,error_class,output from agent_runs where id=${r.id}`;
+    expect(saved.status).toBe('FAILED');
+    expect(saved.error_class).toBe('MIMO_NOT_CONFIGURED');
+    expect(saved.output).toBeNull();
+  });
+  it('persists generated output and preserves posters on a website-only change', async () => {
+    const [latestBrief] =
+      await db`select revision from creative_briefs where project_id=${projectId} order by revision desc limit 1`;
+    await transaction(owner, (tx) => core.approveBrief(tx, owner, projectId, latestBrief.revision));
+    const [savedFact] =
+      await db`select * from product_facts where project_id=${projectId} and version=2`;
+    const f = fixture();
+    const production = JSON.parse(
+      JSON.stringify(f.production)
+        .replaceAll(f.projectId, projectId)
+        .replaceAll(f.factId, savedFact.id),
+    );
+    production.site.factVersion = 2;
+    production.posters[0].factVersion = 2;
+    production.copy[0].factVersion = 2;
+    const design = { ...f.design, factVersion: 2 };
+    await db`insert into design_systems(org_id,project_id,revision,body,approved_at) values(${orgId},${projectId},1,${db.json(design)},now())`;
+    const mock = vi.spyOn(gateway, 'callMimo');
+    try {
+      mock.mockResolvedValueOnce({ output: production, usage: { total_tokens: 100 } });
+      const run = await transaction(owner, (tx) =>
+        core.enqueue(tx, owner, projectId, 'generate', {}),
+      );
+      await runOne();
+      const [result] = await db`select status from agent_runs where id=${run.id}`;
+      expect(result.status).toBe('SUCCEEDED');
+      await db`update artifact_versions set status='APPROVED',approved_by=${owner.userId} where project_id=${projectId} and revision=1`;
+      const revised = structuredClone(production);
+      revised.site.seo.title = '椅子展示新版';
+      revised.site.revision = 2;
+      mock.mockResolvedValueOnce({
+        output: {
+          targetArtifacts: ['site'],
+          isFactChange: false,
+          operations: [{ kind: 'replace', path: 'site.seo.title', proposedValue: '椅子展示新版' }],
+          summary: '仅网站',
+        },
+        usage: {},
+      });
+      mock.mockResolvedValueOnce({ output: revised, usage: {} });
+      await transaction(owner, (tx) =>
+        core.requestChange(tx, owner, projectId, {
+          targetArtifacts: 'site',
+          instruction: '只修改网站标题，海报不变',
+          baseRevision: 1,
+        }),
+      );
+      await runOne();
+      const [version] =
+        await db`select body from artifact_versions where project_id=${projectId} and revision=2`;
+      expect(version.body.posters).toEqual(production.posters);
+      expect(version.body.copy).toEqual(production.copy);
+      expect(version.body.site.seo.title).toBe('椅子展示新版');
+    } finally {
+      mock.mockRestore();
+    }
+  });
+  it('rolls back a publication pointer if the actual HTTP check fails', async () => {
+    const previousOrigin = process.env.APP_URL;
+    process.env.APP_URL = 'https://oneboss.example';
+    const mock = vi
+      .spyOn(network, 'verifyPublicUrl')
+      .mockRejectedValue(new AppError('PUBLIC_SITE_UNREACHABLE', 502));
+    try {
+      const run = await transaction(owner, (tx) =>
+        core.enqueue(tx, owner, projectId, 'publish', { revision: 1 }),
+      );
+      await runOne();
+      const [p] =
+        await db`select published_revision,published_verified from projects where id=${projectId}`;
+      expect(p.published_revision).toBeNull();
+      expect(p.published_verified).toBe(false);
+      const [r] = await db`select status,error_class from agent_runs where id=${run.id}`;
+      expect(r.status).toBe('QUEUED');
+      expect(r.error_class).toBe('PUBLIC_SITE_UNREACHABLE');
+      await db`update agent_runs set status='FAILED' where id=${run.id}`;
+    } finally {
+      mock.mockRestore();
+      if (previousOrigin) process.env.APP_URL = previousOrigin;
+      else delete process.env.APP_URL;
+    }
+  });
+  it('requires platform staff, not customer owner, for real manual payment', async () => {
+    const q = await transaction(owner, (tx) => core.createQuote(tx, orgId, 'professional'));
+    const o = await transaction(owner, (tx) => core.createOrder(tx, orgId, q.id, false));
+    const a = await transaction(owner, (tx) => core.checkout(tx, owner, o.id, 'manual_verified'));
+    const input = {
+      attemptId: a.attempt.id,
+      eventId: 'manual-event-1',
+      amountMinor: o.amount_minor,
+      currency: 'CNY' as const,
+      evidenceRef: 'verified-bank-reference',
+    };
+    await expect(
+      transaction(owner, (tx) => core.confirmPayment(tx, owner, o.id, input, 'manual_verified')),
+    ).rejects.toThrow('PLATFORM_ADMIN_REQUIRED');
+    expect(
+      (
+        await transaction(staff, (tx) =>
+          core.confirmPayment(tx, staff, o.id, input, 'manual_verified'),
+        )
+      ).payState,
+    ).toBe('PAID');
+  });
+  it('refund request revokes production but is not a completed refund', async () => {
+    const refund = await transaction(owner, (tx) => core.requestRefund(tx, owner, orderId, 19900));
+    expect(refund.status).toBe('REQUESTED');
+    expect((await transaction(owner, (tx) => core.order(tx, owner, orderId))).pay_state).toBe(
+      'REFUND_PENDING',
+    );
+    await expect(
+      transaction(owner, (tx) => core.enqueue(tx, owner, projectId, 'intake', {})),
+    ).rejects.toThrow('ENTITLEMENT_REQUIRED');
+    await expect(
+      transaction(owner, (tx) =>
+        core.finalizeRefund(tx, owner, orderId, refund.id, 'refund-reference', true),
+      ),
+    ).rejects.toThrow('PLATFORM_ADMIN_REQUIRED');
+    expect(
+      (
+        await transaction(staff, (tx) =>
+          core.finalizeRefund(tx, staff, orderId, refund.id, 'refund-reference', true),
+        )
+      ).payState,
+    ).toBe('REFUNDED');
+    await expect(
+      transaction(staff, (tx) =>
+        core.finalizeRefund(tx, staff, orderId, refund.id, 'refund-reference', true),
+      ),
+    ).rejects.toThrow('REFUND_NOT_PENDING');
+  });
+});

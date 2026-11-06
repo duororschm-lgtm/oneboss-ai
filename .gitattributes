@@ -1,0 +1,2 @@
+# Markdown's two trailing spaces are intentional hard line breaks in supplied plans.
+*.md whitespace=-blank-at-eol
