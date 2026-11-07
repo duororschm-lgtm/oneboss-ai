@@ -153,3 +153,9 @@ A 后端与引擎交付验收完成；B localStorage 客户工作台仍需接真
 本机真实浏览器验收通过：375px注册页只有账号/密码，无邮箱/验证码/勾选项；真实Supabase创建与登录、重复账号409、额外权限字段400、普通客户审核后台403、刷新会话、错误密码拒绝、退出重登和旧邮箱登录均通过。82单元、34真实PostgreSQL集成（含21并发匿名注册限流）、类型与构建通过。
 
 证据：.cache/registration-local/result.json、registration.png、customer-dashboard.png。临时Auth用户2个删除；未创建组织/订单/模型任务或真实付款。已有临时失败探测账户同样已清理。部署后的相同验收结果另行记录。
+
+账号注册线上最终结果：f4ddbbdd85ab57a2253006acef5062725c5509a9 已部署，Render dep-dbniihbrjlhs738u015g 为Live，用时2m15s；CI42377488293 verify128417962787所有步骤通过。
+
+`.cache/registration-hosted/result.json` passed=true：手机视口真实注册、原邮箱登录、即时工作台、重复账号409、额外角色字段400、普通账号审核拒绝403、刷新/退出/正确和错误密码登录均通过；2个临时Auth账户已删除，未创建组织、订单、模型任务或付款。原授权管理员数据库角色仍存在，另行只读核实为true。
+
+截图：`.cache/registration-hosted/registration.png`、customer-dashboard.png；部署截图`.cache/render-registration-live.png`。注册功能的这一新增要求已完成；完整项目其余未完成项与暂停状态见根目录清单。

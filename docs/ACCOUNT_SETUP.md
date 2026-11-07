@@ -21,3 +21,4 @@
 - 线上只创建临时 Auth 账户、不创建组织/订单/模型任务：RUN_HOSTED_REGISTRATION_ACCEPTANCE=true 后运行同一脚本，结束会按准确身份清理测试账户。
 
 依据：[Supabase createUser 官方参考](https://supabase.com/docs/reference/javascript/auth-admin-createuser)。这是账号身份实现，并非为未经验证的真实邮箱签发所有权证明。
+2026-11-07最终验证：82单元、34PostgreSQL、本机及线上375px真实注册/登录/权限验收通过；原管理员角色保留，每轮2个临时Auth账户清理。运行代码f4ddbbd已Live，部署dep-dbniihbrjlhs738u015g。
