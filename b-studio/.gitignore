@@ -1,0 +1,13 @@
+﻿node_modules/
+dist/
+.tmp/
+*.tsbuildinfo
+playwright-report/
+test-results/
+.DS_Store
+Thumbs.db
+.env
+.env.local
+.idea/
+.vscode/
+

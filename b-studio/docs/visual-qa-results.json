@@ -1,0 +1,331 @@
+{
+  "baseUrl": "http://127.0.0.1:5173",
+  "checks": [
+    {
+      "name": "1280px / 首页 无横向溢出",
+      "ok": true,
+      "detail": {
+        "scrollWidth": 1280,
+        "clientWidth": 1280,
+        "offenders": []
+      }
+    },
+    {
+      "name": "1280px / 套餐 无横向溢出",
+      "ok": true,
+      "detail": {
+        "scrollWidth": 1280,
+        "clientWidth": 1280,
+        "offenders": []
+      }
+    },
+    {
+      "name": "1280px / 订单 无横向溢出",
+      "ok": true,
+      "detail": {
+        "scrollWidth": 1280,
+        "clientWidth": 1280,
+        "offenders": []
+      }
+    },
+    {
+      "name": "1280px / 创意方向 无横向溢出",
+      "ok": true,
+      "detail": {
+        "scrollWidth": 1280,
+        "clientWidth": 1280,
+        "offenders": []
+      }
+    },
+    {
+      "name": "1280px / 网站预览 无横向溢出",
+      "ok": true,
+      "detail": {
+        "scrollWidth": 1280,
+        "clientWidth": 1280,
+        "offenders": []
+      }
+    },
+    {
+      "name": "1280px / 海报 无横向溢出",
+      "ok": true,
+      "detail": {
+        "scrollWidth": 1280,
+        "clientWidth": 1280,
+        "offenders": []
+      }
+    },
+    {
+      "name": "1280px / 修改 无横向溢出",
+      "ok": true,
+      "detail": {
+        "scrollWidth": 1280,
+        "clientWidth": 1280,
+        "offenders": []
+      }
+    },
+    {
+      "name": "1280px / 交付中心 无横向溢出",
+      "ok": true,
+      "detail": {
+        "scrollWidth": 1280,
+        "clientWidth": 1280,
+        "offenders": []
+      }
+    },
+    {
+      "name": "1280px / 公开站点 无横向溢出",
+      "ok": true,
+      "detail": {
+        "scrollWidth": 1280,
+        "clientWidth": 1280,
+        "offenders": []
+      }
+    },
+    {
+      "name": "创意方向有 3 套",
+      "ok": true,
+      "detail": 3
+    },
+    {
+      "name": "单图项目不显示轮播按钮",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "双图项目显示轮播按钮",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "轮播可以切换",
+      "ok": true,
+      "detail": "01 / 02 -> 02 / 02"
+    },
+    {
+      "name": "参数选项卡可以切换",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "多产品目录有 3 个产品",
+      "ok": true,
+      "detail": 3
+    },
+    {
+      "name": "点击产品卡切换详情",
+      "ok": true,
+      "detail": "已确认价格 | 原木边几 |  | 沙发旁的小边几，用于放置书本与茶杯。 |  | 产品名称 | 原木边几 | 品牌 | LINWOOD | 已确认价格 | ¥299 / 件 | 产品介绍 | 沙发旁的小边几"
+    },
+    {
+      "name": "浏览器下载的 PNG 尺寸正确",
+      "ok": true,
+      "detail": "1080x1350, 123539 bytes"
+    },
+    {
+      "name": "PNG 不是空文件",
+      "ok": true,
+      "detail": 123539
+    },
+    {
+      "name": "安全区可以显示",
+      "ok": true,
+      "detail": 4
+    },
+    {
+      "name": "ZIP 包含海报 / manifest / 网址",
+      "ok": true,
+      "detail": [
+        "site-url.txt",
+        "manifest.json",
+        "README-交付说明.md",
+        "posters/one-living-chair-editorial-minimal-1080x1350.png",
+        "posters/one-living-chair-editorial-minimal-1080x1080.png",
+        "qrcode/site-qr-800.png",
+        "copy/demo-chair-001-editorial-minimal-1350.md",
+        "copy/demo-chair-001-editorial-minimal-1080.md"
+      ]
+    },
+    {
+      "name": "公开站点可打开且含已确认价格",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "公开站点标题来自已确认事实",
+      "ok": true,
+      "detail": "ONE LIVING 原木家用椅｜产品宣传"
+    },
+    {
+      "name": "描述生成网站并提取品牌/价格",
+      "ok": true,
+      "detail": "http://127.0.0.1:5173/projects/custom-e46qw/site?generated=1"
+    },
+    {
+      "name": "生成的项目刷新后仍然存在",
+      "ok": true,
+      "detail": "http://127.0.0.1:5173/projects/custom-e46qw/site?generated=1"
+    },
+    {
+      "name": "结算创建演示订单并完成演示支付",
+      "ok": true,
+      "detail": "http://127.0.0.1:5173/orders?focus=order-mw5xn8ra"
+    },
+    {
+      "name": "确认简报进入创意方向",
+      "ok": true,
+      "detail": "http://127.0.0.1:5173/projects/demo-chair-001/creative"
+    },
+    {
+      "name": "只改网站时海报版本不变",
+      "ok": true,
+      "detail": "本次不影响海报 海报保持 V1，二维码、价格与文案文件不重新生成。"
+    },
+    {
+      "name": "价格修改进入事实审核",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "事实审核后网站同步新价格",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "事实审核后海报同步新价格",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "375px / home 无横向溢出",
+      "ok": true,
+      "detail": {
+        "scrollWidth": 375,
+        "clientWidth": 375,
+        "offenders": []
+      }
+    },
+    {
+      "name": "375px / pricing 无横向溢出",
+      "ok": true,
+      "detail": {
+        "scrollWidth": 375,
+        "clientWidth": 375,
+        "offenders": []
+      }
+    },
+    {
+      "name": "375px / create 无横向溢出",
+      "ok": true,
+      "detail": {
+        "scrollWidth": 375,
+        "clientWidth": 375,
+        "offenders": []
+      }
+    },
+    {
+      "name": "375px / creative 无横向溢出",
+      "ok": true,
+      "detail": {
+        "scrollWidth": 375,
+        "clientWidth": 375,
+        "offenders": []
+      }
+    },
+    {
+      "name": "375px / site 无横向溢出",
+      "ok": true,
+      "detail": {
+        "scrollWidth": 375,
+        "clientWidth": 375,
+        "offenders": []
+      }
+    },
+    {
+      "name": "375px / posters 无横向溢出",
+      "ok": true,
+      "detail": {
+        "scrollWidth": 375,
+        "clientWidth": 375,
+        "offenders": []
+      }
+    },
+    {
+      "name": "375px / delivery 无横向溢出",
+      "ok": true,
+      "detail": {
+        "scrollWidth": 375,
+        "clientWidth": 375,
+        "offenders": []
+      }
+    },
+    {
+      "name": "375px / public 无横向溢出",
+      "ok": true,
+      "detail": {
+        "scrollWidth": 375,
+        "clientWidth": 375,
+        "offenders": []
+      }
+    },
+    {
+      "name": "移动端站点菜单可以打开",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "768px / home 无横向溢出",
+      "ok": true,
+      "detail": {
+        "scrollWidth": 768,
+        "clientWidth": 768,
+        "offenders": []
+      }
+    },
+    {
+      "name": "768px / orders 无横向溢出",
+      "ok": true,
+      "detail": {
+        "scrollWidth": 768,
+        "clientWidth": 768,
+        "offenders": []
+      }
+    },
+    {
+      "name": "768px / delivery 无横向溢出",
+      "ok": true,
+      "detail": {
+        "scrollWidth": 768,
+        "clientWidth": 768,
+        "offenders": []
+      }
+    }
+  ],
+  "consoleErrors": [],
+  "screenshots": [
+    "docs/screenshots/home-1280.jpg",
+    "docs/screenshots/creative-1280.jpg",
+    "docs/screenshots/site-chair-1280.jpg",
+    "docs/screenshots/site-car-1280.jpg",
+    "docs/screenshots/posters-1280.jpg",
+    "docs/screenshots/delivery-1280.jpg",
+    "docs/screenshots/public-site-1280.jpg",
+    "docs/screenshots/create-1280.jpg",
+    "docs/screenshots/generated-site-1280.jpg",
+    "docs/screenshots/revise-site-only-1280.jpg",
+    "docs/screenshots/revise-fact-approved-1280.jpg",
+    "docs/screenshots/mobile-home.jpg",
+    "docs/screenshots/mobile-pricing.jpg",
+    "docs/screenshots/mobile-create.jpg",
+    "docs/screenshots/mobile-creative.jpg",
+    "docs/screenshots/mobile-site.jpg",
+    "docs/screenshots/mobile-posters.jpg",
+    "docs/screenshots/mobile-delivery.jpg",
+    "docs/screenshots/mobile-public.jpg"
+  ],
+  "summary": {
+    "checks": 42,
+    "failed": 0,
+    "consoleErrors": 0
+  }
+}
