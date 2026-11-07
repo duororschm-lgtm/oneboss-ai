@@ -1,0 +1,29 @@
+# OneBoss 3D Worker
+# FastAPI service for 3D asset generation — runs on GPU Worker, separate from Next.js web app
+# Requires Python 3.11+, NVIDIA GPU for AI inference adapters
+# Does NOT use Meshy or any external 3D generation SaaS
+
+fastapi>=0.115.0
+uvicorn>=0.32.0
+pydantic>=2.0.0
+python-multipart>=0.0.12
+
+# --- CAD import ---
+# occt-import-js runs via Node.js WASM; called through subprocess or WASM runtime
+# No Python CAD library required for GLB passthrough
+
+# --- Photogrammetry (Route B) ---
+# COLMAP: external binary, installed separately
+# open3d>=0.18.0  # MIT license — point cloud & mesh processing
+
+# --- AI 3D generation (Route C) — GPU required ---
+# TRELLIS.2: install after license audit (nvdiffrast/nvdiffrec non-commercial risk)
+# torch>=2.0.0  # CUDA required
+# TripoSR: MIT license, ~6GB VRAM
+# torch>=2.0.0
+
+# --- GLB processing ---
+# gltf-transform: Node.js CLI, called via subprocess
+
+# --- Quality checks ---
+# trimesh>=4.0.0  # mesh validation
