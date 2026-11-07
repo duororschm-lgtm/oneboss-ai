@@ -33,35 +33,52 @@ DESIGN DNA fields:
 - motionPreset: one of none | subtle | energetic
 - motionLanguage: calm | expressive | energetic (drives animation intensity and rhythm)
 - density: airy | balanced | dense
-- gridStyle: editorial | asymmetric | modular | full-bleed
+- gridStyle: the page grid character — exactly one of editorial | asymmetric | modular | full-bleed (never a motif value)
 - imageTreatment: full-bleed | framed | collage | minimal
-- visualMotif: clean-lines | organic-shapes | geometric-grid | soft-glow | bold-blocks | fine-details
+- visualMotif: the decorative motif — exactly one of clean-lines | organic-shapes | geometric-grid | soft-glow | bold-blocks | fine-details (never a grid value)
 - heroComposition: split-editorial | full-bleed | centered-stage | type-led | asymmetric
 - pageGrid: { contentWidth: narrow|standard|wide|full, columns: 4–12, gutter: 0–64 }
 - siteBlueprint: see below
 
-SITE BLUEPRINT (each direction has its own page structure):
-- pages: 1–3 pages, each { slug: "" for root (empty string), title, sections: 1–12 }
-- sections: each { type, layout, factKeys?, assetRoles?, interactionIds?, motionId?, note? }
-  - type MUST be one of: hero, gallery, features, specs, product-grid, brand, story, contact
-  - layout: { variant, columns?, alignment?, width?, emphasis?, background?, imageRatio? }
-    - variant vocabulary (pick DIFFERENT variants per direction):
-      hero: split-editorial | full-bleed | centered-stage | type-led | asymmetric
-      gallery: editorial-grid | masonry-lite | image-rail | cinematic-stage
-      features: bento | numbered-story | illustrated-list | side-by-side
-      specs: tabs | information-cards | technical-table | accordion
-      product-grid: interactive-product-selector | comparison | horizontal-showcase
-      story: sticky-split | staggered-story | full-width-manifesto
-      contact: editorial-banner | floating-cta | compact-contact
-    - width: narrow|standard|wide|full; emphasis: image-led|text-led|balanced
-    - background: plain|surface|inverted|accent|gradient
-    - imageRatio: square|portrait|landscape|wide
-    - columns: 1–4; alignment: left|center|right
-  - factKeys: semantic fact keys (e.g. "name","description","price"). NEVER UUIDs.
-  - assetRoles: semantic image roles (e.g. "hero","gallery-1","detail"). NEVER UUIDs.
-  - interactionIds: reference interaction specs by short id (e.g. "gallery-1","tabs-main","cta-copy")
-  - motionId: reference motion spec by short id (e.g. "hero-entrance","scroll-story")
-- contentWidth: narrow|standard|wide|full; visualRhythm: calm|layered|punchy
+SITE BLUEPRINT (each direction carries one siteBlueprint object; nesting MUST match this exactly):
+siteBlueprint = {
+  "contentWidth": "narrow|standard|wide|full",   // blueprint level — sibling of "pages", NEVER inside a page
+  "visualRhythm": "calm|layered|punchy",         // blueprint level — sibling of "pages", NEVER inside a page
+  "pages": [                                     // 1–3 pages
+    {
+      "slug": "",                                // "" for the root page; lowercase hyphen slugs otherwise
+      "title": "…",
+      "sections": [                              // 1–12 sections
+        {
+          "type": "…",                           // one of: hero, gallery, features, specs, product-grid, brand, story, contact
+          "layout": {
+            "variant": "…",                      // from the variant vocabulary below
+            "columns": 1,                        // integer 1–4
+            "alignment": "left|center|right",
+            "width": "narrow|standard|wide|full",
+            "emphasis": "image-led|text-led|balanced",
+            "background": "plain|surface|inverted|accent|gradient",
+            "imageRatio": "square|portrait|landscape|wide"
+          },
+          "factKeys": ["name", "description"],   // semantic fact keys. NEVER UUIDs.
+          "assetRoles": ["hero", "gallery-1"],   // semantic image roles. NEVER UUIDs.
+          "interactionIds": ["gallery-1"],       // short ids referenced from the INTERACTION PLAN below
+          "motionId": "hero-entrance",           // short id referenced from the MOTION PLAN below
+          "note": "…"                            // interaction options + layout notes
+        }
+      ]
+    }
+  ]
+}
+- A page object has ONLY slug, title, sections. contentWidth/visualRhythm belong to siteBlueprint itself.
+- variant vocabulary (pick DIFFERENT variants per direction):
+  hero: split-editorial | full-bleed | centered-stage | type-led | asymmetric
+  gallery: editorial-grid | masonry-lite | image-rail | cinematic-stage
+  features: bento | numbered-story | illustrated-list | side-by-side
+  specs: tabs | information-cards | technical-table | accordion
+  product-grid: interactive-product-selector | comparison | horizontal-showcase
+  story: sticky-split | staggered-story | full-width-manifesto
+  contact: editorial-banner | floating-cta | compact-contact
 
 INTERACTION PLAN (embed in siteBlueprint sections via interactionIds):
 Supported kinds: gallery-carousel, image-zoom, tabs, accordion, product-hotspots, product-compare, image-before-after, copy-contact, anchor-navigation
@@ -95,6 +112,8 @@ Constraints:
 - version must be 1 for all new directions.
 - Only reference fact keys that exist in the supplied verified facts. Do not invent product claims.
 - Do not invent database UUIDs anywhere.
+- All numbers must be bare JSON numbers — version and factVersion as integers, columns/gutter/spacingScale/radiusScale as numbers. Never strings, never "px" values.
+- Emit every field exactly once. Add no fields beyond the schema — no missingInputs, assumptionsToConfirm, recommendedStyleId or similar; caveats go into rationale or section note.
 - Each direction is one coherent art direction, not a random mix.`;
 
 const GENERATE_BLUEPRINT_RULES = `DESIGN BLUEPRINT ADHERENCE: the approved design includes a siteBlueprint. Your site MUST keep its page structure: same page slugs, same section types in the same order, same layout variants (props.variant / props.columns / props.alignment / props.width / props.emphasis / props.background / props.imageRatio). You may fill in full content and real factRefs/assetRefs, but you may NOT change the approved composition. If a layout cannot be realized due to missing assets, keep the section and return empty assetRefs rather than switching to a different composition.`;

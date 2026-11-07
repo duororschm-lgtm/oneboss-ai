@@ -74,7 +74,8 @@ export const SectionLayout = z
     alignment: z.enum(['left', 'center', 'right']).optional(),
     width: z.enum(['narrow', 'standard', 'wide', 'full']).optional(),
     emphasis: z.enum(['image-led', 'text-led', 'balanced']).optional(),
-    background: z.enum(['plain', 'surface', 'inverted', 'accent']).optional(),
+    // 'gradient' renders via .bg-gradient (site-v4-motion.css) and is part of the design vocabulary.
+    background: z.enum(['plain', 'surface', 'inverted', 'accent', 'gradient']).optional(),
     imageRatio: z.enum(['square', 'portrait', 'landscape', 'wide']).optional(),
   })
   .strict();

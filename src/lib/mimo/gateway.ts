@@ -59,7 +59,7 @@ export async function callMimo<T>(
     requestBody.tool_choice = { type: 'function', function: { name: 'read_project_facts' } };
   }
   const timeout = AbortSignal.timeout(
-    ['production team', 'revision editor'].includes(role) ? 180000 : 90000,
+    ['production team', 'revision editor', 'creative director'].includes(role) ? 180000 : 90000,
   );
   let response: Awaited<ReturnType<typeof proxyFetch>>;
   try {
