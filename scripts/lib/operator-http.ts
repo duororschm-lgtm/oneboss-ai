@@ -30,10 +30,14 @@ export async function operatorJSON(
         signal: init.signal ? AbortSignal.any([init.signal, timeout]) : timeout,
       });
       result = JSON.parse(await response.text());
-      if (!result || typeof result !== 'object') throw Error('NON_OBJECT_JSON');
-    } catch {
+      if (!result || typeof result !== 'object') throw new SyntaxError('NON_OBJECT_JSON');
+    } catch (error) {
       init.signal?.throwIfAborted();
-      failure = response ? 'NON_JSON' : timeout.aborted ? 'TIMEOUT' : 'NETWORK';
+      failure = timeout.aborted
+        ? 'TIMEOUT'
+        : response && error instanceof SyntaxError
+          ? 'NON_JSON'
+          : 'NETWORK';
       options.trace?.({
         attempt,
         failure,

@@ -82,6 +82,30 @@ describe('operator transport and interrupted acceptance', () => {
     ).rejects.toThrow('TIMEOUT_EXHAUSTED');
     expect(calls).toBe(3);
   });
+  it('classifies a stalled body after headers as timeout rather than invalid JSON', async () => {
+    let calls = 0;
+    await expect(
+      operatorJSON('https://example.com', {}, 200, {
+        timeoutMs: 10,
+        sleep: async () => {},
+        fetch: (async (_url, init) => {
+          calls++;
+          return new Response(
+            new ReadableStream({
+              start(controller) {
+                init!.signal!.addEventListener(
+                  'abort',
+                  () => controller.error(Error('private body timeout')),
+                  { once: true },
+                );
+              },
+            }),
+          );
+        }) as typeof fetch,
+      }),
+    ).rejects.toThrow('TIMEOUT_EXHAUSTED');
+    expect(calls).toBe(3);
+  });
   it('persists operation identity across process restart and rejects unrelated cleanup', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'oneboss-checkpoint-'));
     try {
