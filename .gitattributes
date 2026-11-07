@@ -1,2 +1,5 @@
 # Markdown's two trailing spaces are intentional hard line breaks in supplied plans.
 *.md whitespace=-blank-at-eol
+
+# 迁移文件按 LF 校验哈希；固定为 LF，避免 Windows 的 autocrlf 造成哈希漂移。
+*.sql text eol=lf

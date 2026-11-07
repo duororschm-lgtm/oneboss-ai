@@ -1,0 +1,693 @@
+/*
+ * OneBoss 公开营销站 — Showcase 层
+ * 美学方向：Luxury Editorial × Kinetic（暖纸编辑风 × 动态编排）
+ *
+ * 设计纪律（对应 awwwards skill 的硬规则）：
+ *  - 只新增 .ob-x- 前缀类，绝不改写既有 ob-* 类（dashboard/studio/checkout 共用）
+ *  - 所有颜色走 OKLCH token，无硬编码 hex 重复
+ *  - 中性色一律向品牌暖色偏移（chroma 0.005-0.02），不出现纯黑纯白
+ *  - 动效镜头 = Polish（Krehel）：编排过、有缓动、克制；不弹跳
+ *  - prefers-reduced-motion 全量降级为静态
+ *  - 滚动驱动动画只在 @supports 时启用，默认状态一律可读可点
+ *  - 375px 是一等公民（项目验收宽度）
+ */
+
+/* ───────────────────────── 1. 深度化的调色板 ─────────────────────────
+   基础 5 色由项目现有 hex 精算转换而来（见交付说明），保持品牌识别不变。
+   新增角色全部向暖色 / 朱红偏移，拉开景深而不是换品牌。 */
+.ob-app {
+  /* ── 通用兜底：hex，任何浏览器都能解析 ──
+     不能用 `--x: hex; --x: oklch()` 双写兜底：自定义属性不按值拒绝，
+     oklch 那条永远胜出，兜底等于没有。必须靠 @supports 分层。 */
+  --ob-paper: #f5f1e8;
+  --ob-ink: #20251f;
+  --ob-muted: #686c62;
+  --ob-line: #d8d8ca;
+  --ob-accent: #d74c2f;
+  --ob-paper-lift: #fdfaf3;
+  --ob-paper-sink: #ebe7dc;
+  --ob-ink-deep: #0a0f0b;
+  --ob-ink-soft: #d8dad2;
+  --ob-line-deep: #2f352e;
+  --ob-accent-deep: #a9281b;
+  --ob-accent-soft: #fddac3;
+  --ob-glow: #f18154;
+
+  /* 三分字体体系：衬线标题 / 无衬线正文 / 等宽标签
+     不引外部字体 —— 面向大陆的中文生产站，Google Fonts 不可靠且会炸构建 */
+  --ob-font-display:
+    'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', 'STSong', SimSun,
+    'Palatino Linotype', Palatino, Georgia, serif;
+  --ob-font-body:
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
+  --ob-font-label:
+    ui-monospace, 'SF Mono', 'Cascadia Code', Consolas, 'Liberation Mono', monospace;
+}
+
+/* 支持 oklch 的浏览器覆盖为 OKLCH token（感知更均匀，后续调色更好用）*/
+@supports (color: oklch(0 0 0)) {
+  :root {
+    --ob-paper: oklch(0.959 0.0127 86.8);
+    --ob-ink: oklch(0.257 0.0132 140.5);
+    --ob-muted: oklch(0.525 0.0161 124.8);
+    --ob-line: oklch(0.878 0.0189 106.8);
+    --ob-accent: oklch(0.603 0.18 33.5);
+    --ob-paper-lift: oklch(0.986 0.01 90);
+    --ob-paper-sink: oklch(0.928 0.015 92);
+    --ob-ink-deep: oklch(0.163 0.012 148);
+    --ob-ink-soft: oklch(0.885 0.012 120);
+    --ob-line-deep: oklch(0.32 0.014 145);
+    --ob-accent-deep: oklch(0.485 0.168 30);
+    --ob-accent-soft: oklch(0.912 0.05 55);
+    --ob-glow: oklch(0.72 0.15 42);
+  }
+}
+
+
+/* ───────────────────────── 2. 纸面颗粒（难忘点的一半） ─────────────────────────
+   固定叠加层，multiply 混合，模拟纸张纤维。pointer-events 关掉不挡交互。 */
+.ob-app .ob-x-grain {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0.32;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+}
+/* 深色段落里颗粒要反过来（screen），否则看不见 */
+.ob-app .ob-x-dark .ob-x-grain-local {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.16;
+  mix-blend-mode: screen;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ───────────────────────── 3. 顶部滚动进度轨 ───────────────────────── */
+.ob-app .ob-x-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 70;
+  pointer-events: none;
+  background: linear-gradient(
+    to right,
+    var(--ob-accent) 0%,
+    var(--ob-glow) 50%,
+    transparent 100%
+  );
+  transform-origin: 0 50%;
+}
+@supports (animation-timeline: scroll()) {
+  .ob-app .ob-x-rail {
+    animation: ob-x-rail-grow linear both;
+    animation-timeline: scroll(root);
+  }
+}
+@keyframes ob-x-rail-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* ───────────────────────── 4. HERO ─────────────────────────
+   硬不对称：左侧大字压过栅格，右侧概念排版错位下沉。 */
+.ob-app .ob-x-hero {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
+  gap: clamp(28px, 5vw, 72px);
+  align-items: end;
+  padding-top: clamp(56px, 9vh, 108px);
+  padding-bottom: clamp(56px, 9vh, 104px);
+}
+
+.ob-app .ob-x-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--ob-font-label);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ob-muted);
+}
+.ob-app .ob-x-eyebrow::before {
+  content: '';
+  width: 26px;
+  height: 1px;
+  background: var(--ob-accent);
+}
+
+/* 超大标题：宋体衬线 + 极紧字距 */
+.ob-app .ob-x-display {
+  font-family: var(--ob-font-display);
+  font-size: clamp(44px, 9.2vw, 116px);
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+  font-weight: 700;
+  margin: 22px 0 0;
+  text-wrap: balance;
+}
+
+/* ★ 难忘点：「认真看见」的滚动墨迹填充 ★
+   基础层是 ink（永远可读），::after 的朱红层随滚动从左向右盖上。
+   两个状态都清楚，没有"动画没跑就看不见"的坑。 */
+.ob-app .ob-x-fill {
+  position: relative;
+  display: inline-block;
+  color: var(--ob-accent);
+}
+.ob-app .ob-x-fill::after {
+  content: attr(data-text);
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--ob-ink);
+  clip-path: inset(0 0 0 0);
+}
+@supports (animation-timeline: scroll()) {
+  .ob-app .ob-x-fill::after {
+    animation: ob-x-ink-wipe linear both;
+    animation-timeline: scroll(root);
+    animation-range: 0 34vh;
+  }
+}
+@keyframes ob-x-ink-wipe {
+  from {
+    clip-path: inset(0 0 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 100%);
+  }
+}
+
+.ob-app .ob-x-lead {
+  font-family: var(--ob-font-body);
+  font-size: clamp(15px, 1.35vw, 18px);
+  line-height: 1.95;
+  color: var(--ob-muted);
+  max-width: 46ch;
+  margin-top: 26px;
+}
+
+/* CTA 组：磁吸按钮（JS 负责位移，CSS 负责质感） */
+.ob-app .ob-x-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 32px;
+}
+.ob-app .ob-x-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 26px;
+  border-radius: 2px;
+  font-family: var(--ob-font-body);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  border: 1px solid var(--ob-ink);
+  background: var(--ob-ink);
+  color: var(--ob-paper);
+  overflow: hidden;
+  isolation: isolate;
+  transition:
+    transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 0.45s ease,
+    color 0.45s ease,
+    border-color 0.45s ease;
+  will-change: transform;
+}
+/* hover 时朱红从底部推上来 —— 有方向感，不是变色 */
+.ob-app .ob-x-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--ob-accent);
+  transform: scaleY(0);
+  transform-origin: 50% 100%;
+  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.ob-app .ob-x-btn:hover::before,
+.ob-app .ob-x-btn:focus-visible::before {
+  transform: scaleY(1);
+}
+.ob-app .ob-x-btn:hover,
+.ob-app .ob-x-btn:focus-visible {
+  border-color: var(--ob-accent);
+  color: var(--ob-paper);
+}
+.ob-app .ob-x-btn:active {
+  transform: scale(0.98);
+}
+.ob-app .ob-x-btn--ghost {
+  background: transparent;
+  color: var(--ob-ink);
+  border-color: var(--ob-line);
+}
+.ob-app .ob-x-btn--ghost:hover,
+.ob-app .ob-x-btn--ghost:focus-visible {
+  color: var(--ob-paper);
+  border-color: var(--ob-accent);
+}
+.ob-app .ob-x-btn--lg {
+  padding: 19px 34px;
+  font-size: 16px;
+}
+
+/* 概念排版面板：错位下沉 + 层叠景深 */
+.ob-app .ob-x-art {
+  position: relative;
+  aspect-ratio: 4 / 5;
+  border: 1px solid var(--ob-line);
+  background: var(--ob-paper-lift);
+  padding: clamp(20px, 2.6vw, 34px);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow:
+    0 1px 0 var(--ob-line),
+    18px 22px 0 -6px rgba(235, 231, 220, 0.85),
+    36px 44px 0 -12px rgba(235, 231, 220, 0.5);
+}
+/* 右上色场：柔和渐变 + 极淡栏线，读起来像「设计打样」而不是没做完的方块 */
+.ob-app .ob-x-art::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 52%;
+  height: 44%;
+  pointer-events: none;
+  background:
+    linear-gradient(152deg, var(--ob-accent-soft) 0%, rgba(253, 218, 195, 0.0) 82%),
+    repeating-linear-gradient(
+      to right,
+      transparent 0 27px,
+      rgba(32, 37, 31, 0.06) 27px 28px
+    );
+  -webkit-mask-image: linear-gradient(152deg, #000 55%, transparent 100%);
+  mask-image: linear-gradient(152deg, #000 55%, transparent 100%);
+}
+.ob-app .ob-x-art-top {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--ob-font-label);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ob-muted);
+}
+.ob-app .ob-x-art-word {
+  font-family: var(--ob-font-display);
+  font-size: clamp(38px, 5.4vw, 74px);
+  line-height: 0.94;
+  letter-spacing: -0.05em;
+  font-weight: 700;
+  margin: auto 0;
+}
+.ob-app .ob-x-art-word em {
+  font-style: italic;
+  color: var(--ob-accent);
+}
+.ob-app .ob-x-art-bottom {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: var(--ob-font-label);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--ob-muted);
+}
+.ob-app .ob-x-art-note {
+  position: absolute;
+  bottom: -26px;
+  left: 0;
+  font-family: var(--ob-font-label);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--ob-muted);
+}
+
+/* ───────────────────────── 5. 动态跑马灯 ─────────────────────────
+   替换原来的静态 ob-band。hover 暂停，键盘聚焦也暂停。 */
+.ob-app .ob-x-marquee {
+  overflow: hidden;
+  border-top: 1px solid var(--ob-line);
+  border-bottom: 1px solid var(--ob-line);
+  background: var(--ob-paper-sink);
+  padding: 15px 0;
+}
+.ob-app .ob-x-marquee-track {
+  display: flex;
+  width: max-content;
+  gap: 0;
+  animation: ob-x-marquee 34s linear infinite;
+}
+.ob-app .ob-x-marquee:hover .ob-x-marquee-track,
+.ob-app .ob-x-marquee:focus-within .ob-x-marquee-track {
+  animation-play-state: paused;
+}
+.ob-app .ob-x-marquee-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 22px;
+  padding-right: 22px;
+  font-family: var(--ob-font-label);
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ob-ink);
+  white-space: nowrap;
+}
+.ob-app .ob-x-marquee-item i {
+  font-style: normal;
+  color: var(--ob-accent);
+}
+@keyframes ob-x-marquee {
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+/* ───────────────────────── 6. 章节骨架 ───────────────────────── */
+.ob-app .ob-x-section {
+  padding-top: clamp(64px, 10vh, 132px);
+  padding-bottom: clamp(64px, 10vh, 132px);
+}
+.ob-app .ob-x-section-head {
+  display: grid;
+  grid-template-columns: minmax(0, 0.42fr) minmax(0, 0.58fr);
+  gap: clamp(24px, 4vw, 64px);
+  align-items: end;
+  margin-bottom: clamp(38px, 6vh, 72px);
+}
+.ob-app .ob-x-h2 {
+  font-family: var(--ob-font-display);
+  font-size: clamp(30px, 4.6vw, 58px);
+  line-height: 1.12;
+  letter-spacing: -0.045em;
+  font-weight: 700;
+}
+.ob-app .ob-x-aside {
+  font-family: var(--ob-font-body);
+  font-size: 15px;
+  line-height: 1.95;
+  color: var(--ob-muted);
+  padding-left: clamp(0px, 2vw, 26px);
+  border-left: 1px solid var(--ob-line);
+}
+
+/* ───────────────────────── 7. 流程卡片（3D 倾斜） ───────────────────────── */
+.ob-app .ob-x-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--ob-line);
+  border: 1px solid var(--ob-line);
+}
+.ob-app .ob-x-step {
+  position: relative;
+  background: var(--ob-paper);
+  padding: clamp(26px, 3.2vw, 42px);
+  transform-style: preserve-3d;
+  transition:
+    background-color 0.55s ease,
+    box-shadow 0.55s ease;
+  will-change: transform;
+}
+.ob-app .ob-x-step::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 2px;
+  background: var(--ob-accent);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.ob-app .ob-x-step:hover::before,
+.ob-app .ob-x-step:focus-within::before {
+  transform: scaleX(1);
+}
+.ob-app .ob-x-step:hover {
+  background: var(--ob-paper-lift);
+  box-shadow: 0 26px 48px -30px rgba(32, 37, 31, 0.32);
+}
+.ob-app .ob-x-step-num {
+  display: block;
+  font-family: var(--ob-font-label);
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  color: var(--ob-accent);
+}
+.ob-app .ob-x-step h3 {
+  font-family: var(--ob-font-display);
+  font-size: clamp(23px, 2.3vw, 31px);
+  letter-spacing: -0.035em;
+  line-height: 1.25;
+  margin: 18px 0 12px;
+}
+.ob-app .ob-x-step p {
+  font-family: var(--ob-font-body);
+  font-size: 14.5px;
+  line-height: 1.95;
+  color: var(--ob-muted);
+}
+
+/* ───────────────────────── 8. 深色展厅（戏剧性反转） ─────────────────────────
+   全页唯一的暗场。这是节奏上的重拍，不是主题切换。 */
+.ob-app .ob-x-dark {
+  position: relative;
+  overflow: hidden;
+  background: var(--ob-ink-deep);
+  color: var(--ob-ink-soft);
+}
+.ob-app .ob-x-dark .ob-x-eyebrow {
+  color: #82897c;
+}
+.ob-app .ob-x-dark .ob-x-h2 {
+  color: var(--ob-paper);
+}
+.ob-app .ob-x-dark .ob-x-aside {
+  color: #969a90;
+  border-left-color: var(--ob-line-deep);
+}
+/* 辉光：朱红从左下渗进来，给暗场一点热度 */
+.ob-app .ob-x-dark::before {
+  content: '';
+  position: absolute;
+  left: -18%;
+  bottom: -42%;
+  width: 70%;
+  height: 100%;
+  background: radial-gradient(
+    closest-side,
+    rgba(241, 129, 84, 0.3),
+    rgba(241, 129, 84, 0.0) 72%
+  );
+  pointer-events: none;
+}
+.ob-app .ob-x-panels {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(14px, 1.8vw, 22px);
+  position: relative;
+}
+.ob-app .ob-x-panel {
+  position: relative;
+  padding: clamp(24px, 3vw, 38px);
+  border: 1px solid var(--ob-line-deep);
+  background: rgba(21, 27, 22, 0.72);
+  backdrop-filter: blur(2px);
+  transition:
+    transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.5s ease,
+    background-color 0.5s ease;
+}
+.ob-app .ob-x-panel:hover {
+  transform: translateY(-8px);
+  border-color: rgba(203, 100, 64, 0.55);
+  background: rgba(28, 34, 28, 0.85);
+}
+.ob-app .ob-x-panel-idx {
+  font-family: var(--ob-font-label);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: var(--ob-glow);
+}
+.ob-app .ob-x-panel h3 {
+  font-family: var(--ob-font-display);
+  font-size: clamp(24px, 2.6vw, 35px);
+  letter-spacing: -0.04em;
+  color: var(--ob-paper);
+  margin: 16px 0 10px;
+}
+.ob-app .ob-x-panel p {
+  font-family: var(--ob-font-body);
+  font-size: 14px;
+  line-height: 1.95;
+  color: #9ca097;
+}
+
+/* ───────────────────────── 9. 结语 CTA ───────────────────────── */
+.ob-app .ob-x-close {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: clamp(24px, 4vw, 56px);
+  align-items: center;
+}
+.ob-app .ob-x-close-title {
+  font-family: var(--ob-font-display);
+  font-size: clamp(34px, 6vw, 82px);
+  line-height: 1.02;
+  letter-spacing: -0.055em;
+  font-weight: 700;
+}
+.ob-app .ob-x-close-title em {
+  font-style: italic;
+  color: var(--ob-accent);
+}
+
+/* ───────────────────────── 10. 进场揭示 ─────────────────────────
+   铁律：只动 transform，**绝不碰 opacity**。
+   一旦关键帧里有 `from { opacity: 0 }`，动画时间线没跑到区间时元素就永远停在
+   透明态——内容被动画锁死，长截图、打印、降级浏览器、滚动条拖到底都会踩。
+   动效只负责润色，不负责让内容存在。 */
+@supports (animation-timeline: view()) {
+  .ob-app .ob-x-reveal {
+    animation: ob-x-reveal linear both;
+    animation-timeline: view();
+    animation-range: entry 8% cover 32%;
+    will-change: transform;
+  }
+}
+@keyframes ob-x-reveal {
+  from {
+    transform: translate3d(0, 26px, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+/* 打印 / 导出：一律静态，避免任何位移残留 */
+@media print {
+  .ob-app .ob-x-reveal,
+  .ob-app .ob-x-rail {
+    animation: none;
+    transform: none;
+  }
+  .ob-app .ob-x-grain {
+    display: none;
+  }
+}
+
+/* ───────────────────────── 11. 响应式：375px 是一等公民 ───────────────────────── */
+@media (max-width: 980px) {
+  .ob-app .ob-x-hero {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 42px;
+  }
+  .ob-app .ob-x-art {
+    aspect-ratio: 3 / 2;
+    box-shadow:
+      0 1px 0 var(--ob-line),
+      12px 14px 0 -6px rgba(235, 231, 220, 0.85);
+  }
+  .ob-app .ob-x-section-head {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+  .ob-app .ob-x-aside {
+    border-left: none;
+    border-top: 1px solid var(--ob-line);
+    padding-left: 0;
+    padding-top: 18px;
+  }
+  .ob-app .ob-x-steps,
+  .ob-app .ob-x-panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ob-app .ob-x-close {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+}
+@media (max-width: 560px) {
+  .ob-container {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+  .ob-app .ob-x-display {
+    /* 375px 下中文大标题不能溢出 */
+    font-size: clamp(34px, 11vw, 52px);
+    letter-spacing: -0.045em;
+  }
+  .ob-app .ob-x-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .ob-app .ob-x-btn {
+    justify-content: center;
+  }
+  .ob-app .ob-x-art-bottom,
+  .ob-app .ob-x-art-top {
+    font-size: 9px;
+    letter-spacing: 0.12em;
+  }
+}
+
+/* ───────────────────────── 12. 减少动效：全量降级 ─────────────────────────
+   不是关掉一半 —— 所有位移/揭示/跑马灯一律静态，只保留颜色状态变化。 */
+@media (prefers-reduced-motion: reduce) {
+  .ob-app .ob-x-grain {
+    display: none;
+  }
+  .ob-app .ob-x-rail {
+    display: none;
+  }
+  .ob-app .ob-x-marquee-track {
+    animation: none;
+    flex-wrap: wrap;
+    width: 100%;
+    justify-content: center;
+    row-gap: 8px;
+  }
+  .ob-app .ob-x-fill::after {
+    animation: none;
+    clip-path: inset(0 0 0 0);
+  }
+  .ob-app .ob-x-reveal {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+  .ob-app .ob-x-step,
+  .ob-app .ob-x-panel,
+  .ob-app .ob-x-btn {
+    transition:
+      background-color 0.01ms,
+      color 0.01ms,
+      border-color 0.01ms;
+    transform: none !important;
+    will-change: auto;
+  }
+  .ob-app .ob-x-btn::before {
+    transition: none;
+  }
+}

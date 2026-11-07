@@ -64,9 +64,8 @@ export default function CustomersPage() {
       />
 
       <Banner tone="info">
-        当前可用的只有订单原始记录里的组织字段。真正的客户档案接口是
-        <code> GET /api/admin/customers</code>（缺口 <strong>A-09</strong>），
-        在它上线前，下面第二张表只是<strong>订单里出现过的组织</strong>，不是客户档案。
+        客户列表来自 <code>organizations</code> 表，按组织聚合订单与项目数量。
+        邮箱等敏感字段不在列表返回，避免跨表读取 Auth 数据。
       </Banner>
 
       <Card padding={false}>

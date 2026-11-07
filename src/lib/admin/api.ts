@@ -185,6 +185,84 @@ function normalize(error: unknown, spec: EndpointSpec): AdminFailure {
 
 /* ------------------------------- 读取 ------------------------------- */
 
+/** 分页响应统一解包：后端返回 { items, total, ... }，页面多数只要列表。 */
+interface Paged<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  hasNextPage: boolean;
+}
+
+const unwrap = <T,>(payload: Paged<T> | T[]): T[] =>
+  Array.isArray(payload) ? payload : (payload.items ?? []);
+
+export interface OrderRow {
+  id: string;
+  order_no: string;
+  org_id: string;
+  pay_state: string;
+  amount_minor: number;
+  is_demo: boolean;
+  created_at: string;
+  plan_name: string | null;
+  organization: string | null;
+  work_state: string | null;
+  publish_slug: string | null;
+}
+
+export interface OrderQueryParams {
+  page?: number;
+  pageSize?: number;
+  keyword?: string;
+  payState?: string;
+  from?: string;
+  to?: string;
+}
+
+const queryString = (params: Record<string, string | number | undefined>) => {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params))
+    if (value !== undefined && value !== '') search.set(key, String(value));
+  const text = search.toString();
+  return text ? `?${text}` : '';
+};
+
+/** 订单服务端分页与筛选（A-03 已实现）。 */
+export async function fetchOrders(
+  params: OrderQueryParams,
+): Promise<AdminResult<Paged<OrderRow>>> {
+  if (MOCK_MODE) return { ok: true, data: { items: [], page: 1, pageSize: 20, total: 0, hasNextPage: false }, mock: true };
+  try {
+    return {
+      ok: true,
+      mock: false,
+      data: await request<Paged<OrderRow>>(`${ENDPOINTS.orders.path}${queryString({ ...params })}`),
+    };
+  } catch (error) {
+    return normalize(error, ENDPOINTS.orders);
+  }
+}
+
+export interface OrderDetail {
+  order: Record<string, any>;
+  entitlement: Record<string, any> | null;
+  payments: { kind: string; provider: string; status: string; amount_minor: number | null; external_ref: string | null; created_at: string }[];
+  project: Record<string, any> | null;
+  versions: { revision: number; status: string; fact_version: number; created_at: string; approved_by: string | null }[];
+  runs: { id: string; role: string; status: string; attempt: number; error_class: string | null; usage: any; created_at: string; completed_at: string | null }[];
+  refunds: { id: string; amount_minor: number; status: string; provider_ref: string | null; created_at: string }[];
+  changes: { id: string; base_revision: number; target: string; status: string; instruction: string; created_at: string }[];
+}
+
+export async function fetchOrderDetail(orderId: string): Promise<AdminResult<OrderDetail>> {
+  try {
+    return { ok: true, mock: false, data: await request<OrderDetail>(`${ENDPOINTS.orders.path}/${orderId}`) };
+  } catch (error) {
+    return normalize(error, ENDPOINTS.orders);
+  }
+}
+
 export async function fetchWorkspace(): Promise<AdminResult<AdminWorkspacePayload>> {
   try {
     return { ok: true, data: await request<AdminWorkspacePayload>('/api/core/admin'), mock: false };
@@ -237,7 +315,8 @@ export async function fetchApprovals(): Promise<AdminResult<ApprovalItem[]>> {
 export async function fetchAgentRuns(): Promise<AdminResult<AgentRun[]>> {
   if (MOCK_MODE) return { ok: true, data: MOCK.agentRuns, mock: true };
   try {
-    return { ok: true, data: await request<AgentRun[]>(ENDPOINTS.agentRuns.path), mock: false };
+    const payload = await request<Paged<AgentRun>>(`${ENDPOINTS.agentRuns.path}?pageSize=50`);
+    return { ok: true, data: unwrap(payload), mock: false };
   } catch (error) {
     return normalize(error, ENDPOINTS.agentRuns);
   }
@@ -246,7 +325,8 @@ export async function fetchAgentRuns(): Promise<AdminResult<AgentRun[]>> {
 export async function fetchWorkReviews(): Promise<AdminResult<WorkReview[]>> {
   if (MOCK_MODE) return { ok: true, data: MOCK.workReviews, mock: true };
   try {
-    return { ok: true, data: await request<WorkReview[]>(ENDPOINTS.workReviews.path), mock: false };
+    const payload = await request<Paged<WorkReview>>(`${ENDPOINTS.workReviews.path}?pageSize=50`);
+    return { ok: true, data: unwrap(payload), mock: false };
   } catch (error) {
     return normalize(error, ENDPOINTS.workReviews);
   }
@@ -255,7 +335,8 @@ export async function fetchWorkReviews(): Promise<AdminResult<WorkReview[]>> {
 export async function fetchCustomers(): Promise<AdminResult<CustomerRow[]>> {
   if (MOCK_MODE) return { ok: true, data: MOCK.customers, mock: true };
   try {
-    return { ok: true, data: await request<CustomerRow[]>(ENDPOINTS.customers.path), mock: false };
+    const payload = await request<Paged<CustomerRow>>(`${ENDPOINTS.customers.path}?pageSize=50`);
+    return { ok: true, data: unwrap(payload), mock: false };
   } catch (error) {
     return normalize(error, ENDPOINTS.customers);
   }
@@ -264,7 +345,8 @@ export async function fetchCustomers(): Promise<AdminResult<CustomerRow[]>> {
 export async function fetchAuditLogs(): Promise<AdminResult<AuditEntry[]>> {
   if (MOCK_MODE) return { ok: true, data: MOCK.auditLogs, mock: true };
   try {
-    return { ok: true, data: await request<AuditEntry[]>(ENDPOINTS.auditLogs.path), mock: false };
+    const payload = await request<Paged<AuditEntry>>(`${ENDPOINTS.auditLogs.path}?pageSize=50`);
+    return { ok: true, data: unwrap(payload), mock: false };
   } catch (error) {
     return normalize(error, ENDPOINTS.auditLogs);
   }

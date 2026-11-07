@@ -6,7 +6,7 @@ import { outboundFetch } from '../src/lib/security/http';
 // Creates one temporary Auth user, but no organizations, orders, projects or payments.
 // Authenticated API probes can leave ordinary rate-limit counters for the deleted UUID.
 assert(process.env.RUN_HOSTED_ACCEPTANCE === 'true', 'EXPLICIT_HOSTED_OPT_IN_REQUIRED');
-const origin = 'https://oneboss-ai.onrender.com';
+const origin = (process.env.APP_URL || 'https://oneboss-ai.onrender.com');
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const publicKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

@@ -16,7 +16,7 @@ assert(
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://mxyocfnzrfpujnkqikbp.supabase.co',
   'EXPECTED_DEMO_PROJECT_REQUIRED',
 );
-const origin = 'https://oneboss-ai.onrender.com',
+const origin = (process.env.APP_URL || 'https://oneboss-ai.onrender.com'),
   slug = 'blackcode-demo';
 const path = '.secrets/public-demo/blackcode.json',
   dir = '.cache/public-demo';

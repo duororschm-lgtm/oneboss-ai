@@ -1,7 +1,13 @@
 'use client';
-import { useState } from 'react';
-import { ENDPOINTS, confirmManualPayment, finalizeRefund } from '../../../../lib/admin/api';
-import type { AdminRefund, ManualAttempt } from '../../../../lib/admin/types';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  ENDPOINTS,
+  confirmManualPayment,
+  fetchApprovals,
+  finalizeRefund,
+  type AdminResult,
+} from '../../../../lib/admin/api';
+import type { AdminRefund, ApprovalItem, ManualAttempt } from '../../../../lib/admin/types';
 import { dateTime, money, refundStatus } from '../../../../lib/admin/format';
 import { useAdmin } from '../../../../components/admin/shell';
 import { Banner, EmptyState, SkeletonRows, UnsupportedState } from '../../../../components/admin/states';
@@ -11,6 +17,16 @@ type PendingAction =
   | { kind: 'payment'; attempt: ManualAttempt; reference: string }
   | { kind: 'refund'; refund: AdminRefund; reference: string; confirmed: boolean };
 
+const KIND_LABEL: Record<string, string> = {
+  payment_review: '支付核验',
+  refund_review: '退款审批',
+  production_release: '待制作放行',
+  work_review: '作品审核',
+  publish_review: '发布审核',
+  agent_failure: '任务失败',
+  order_exception: '订单异常',
+};
+
 export default function ApprovalsPage() {
   const { workspace, reload } = useAdmin();
   const [reference, setReference] = useState<Record<string, string>>({});
@@ -18,9 +34,21 @@ export default function ApprovalsPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [queue, setQueue] = useState<AdminResult<ApprovalItem[]> | null>(null);
+
+  const loadQueue = useCallback(async () => {
+    setQueue(await fetchApprovals());
+  }, []);
+
+  useEffect(() => {
+    void loadQueue();
+  }, [loadQueue]);
 
   const attempts = workspace?.ok ? workspace.data.manualAttempts : [];
   const refunds = workspace?.ok ? workspace.data.refunds.filter((r) => r.status === 'REQUESTED') : [];
+  const others = (queue?.ok ? queue.data : []).filter(
+    (item) => item.kind !== 'payment_review' && item.kind !== 'refund_review',
+  );
 
   async function run(action: PendingAction) {
     setBusy(true);
@@ -224,16 +252,59 @@ export default function ApprovalsPage() {
         )}
       </Card>
 
-      <Card title="其余审批类型" subtitle="等待 A 组接口" padding={false}>
-        <UnsupportedState
-          spec={ENDPOINTS.approvals}
-          extra={
-            <p style={{ fontSize: 12.5, margin: 0 }}>
-              制作放行（production-release）、暂缓（hold）、要求补充资料、转交处理、作品审核与正式发布审核均缺少服务端接口。
-              当前可真实执行的只有<strong>人工收款核验</strong>与<strong>退款核验</strong>。
-            </p>
-          }
-        />
+      <Card title="其他待办" subtitle="来自真实业务表 · 只读" padding={false}>
+        {!queue ? (
+          <SkeletonRows rows={3} />
+        ) : !queue.ok ? (
+          queue.kind === 'unsupported' ? (
+            <UnsupportedState spec={queue.spec} />
+          ) : (
+            <EmptyState title="无法读取审批队列" detail="请刷新重试" />
+          )
+        ) : others.length === 0 ? (
+          <EmptyState title="没有其他待办" detail="制作放行、作品审核与任务失败会出现在这里。" />
+        ) : (
+          <div className="ad-table-wrap">
+            <table className="ad-table">
+              <thead>
+                <tr>
+                  <th scope="col">类型</th>
+                  <th scope="col">订单 / 项目</th>
+                  <th scope="col">客户</th>
+                  <th scope="col" className="ad-num">金额</th>
+                  <th scope="col">原因</th>
+                  <th scope="col">提交时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                {others.map((item) => (
+                  <tr key={item.id}>
+                    <td>
+                      <span className="ad-badge" data-tone="info">
+                        {KIND_LABEL[item.kind] ?? item.kind}
+                      </span>
+                    </td>
+                    <td className="ad-code">
+                      {item.orderNo ?? (item.projectId ? item.projectId.slice(0, 8) : '—')}
+                    </td>
+                    <td>{item.organization ?? '—'}</td>
+                    <td className="ad-num">
+                      {item.amountMinor === null ? '—' : money(item.amountMinor)}
+                    </td>
+                    <td style={{ maxWidth: 320 }}>{item.reason ?? '—'}</td>
+                    <td>{dateTime(item.submittedAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div className="ad-card-body" style={{ borderTop: '1px solid var(--ad-border)' }}>
+          <p style={{ fontSize: 12.5, margin: 0, color: 'var(--ad-muted)' }}>
+            制作放行、暂缓（hold）、要求补充资料、作品审核的<strong>写动作</strong>仍需服务端状态机支持；
+            当前可真实执行的只有<strong>人工收款核验</strong>与<strong>退款核验</strong>。此表仅用于发现待办。
+          </p>
+        </div>
       </Card>
 
       {pending && (

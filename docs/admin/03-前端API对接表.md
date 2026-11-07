@@ -2,6 +2,9 @@
 
 生成时间：2026-11-07　分支：`feat/admin-console`
 
+> **更新（2026-11-08）**：下面标「缺口」的端点已全部实现，见本文末尾的《实现记录》。
+> 写操作仍然只有收款核验与退款核验两个走既有 `commerce` 接口，其余审批动作仍缺服务端状态机。
+
 > 所有请求都经过 `src/lib/admin/api.ts` 一个出口，页面组件里没有散落的 `fetch`。
 > 「状态」列只有三种：**真实**（已接通现有接口）、**缺口**（后端未提供，页面显示缺口编号）、**只读真实**。
 
@@ -56,3 +59,35 @@
 
 `NEXT_PUBLIC_ADMIN_MODE=mock` 时，A-01/A-02/A-05/A-06/A-08/A-09/A-11 返回固定演示数据，
 且页面顶部常驻「开发模拟数据」横幅。生产默认 `live`，不加载 `mock.ts`。
+
+---
+
+## 实现记录（2026-11-08）
+
+以下端点已实现，全部要求平台管理员身份，全部只读：
+
+| 端点 | 实现位置 | 说明 |
+| --- | --- | --- |
+| `GET /api/admin/dashboard` | `src/lib/admin/server.ts: overview` | 8 项指标 + 最近订单 + 失败任务；只统计非演示订单 |
+| `GET /api/admin/revenue` | `revenue` | 按日/周/月聚合，到账与退款分别聚合后合并 |
+| `GET /api/admin/orders` | `orders` | 服务端分页 + 关键词/状态/日期筛选，带制作状态 |
+| `GET /api/admin/orders/:id` | `orderDetail` | 订单 + 权益 + 支付记录 + 项目 + 版本 + 任务 + 退款 + 修改请求 |
+| `GET /api/admin/approvals` | `approvals` | 支付核验 / 退款 / 待放行 / 作品审核 / 任务失败，五类合并 |
+| `GET /api/admin/agents/runs` | `agentRuns` | 跨租户运行记录，支持状态与角色筛选 |
+| `GET /api/admin/works/reviews` | `workReviews` | 每个项目最新版本的作品信息 |
+| `GET /api/admin/customers` | `customers` | 按组织聚合订单/项目数 |
+| `GET /api/admin/audit-logs` | `auditLogs` | 表不存在时返回空并标记 `tableExists:false` |
+
+路由文件：`src/app/api/admin/[...path]/route.ts`（静态段优先于 `/api/[...path]` 的 catch-all）。
+
+### 审计
+
+- 表：`admin_audit_logs`（`supabase/migrations/202611080001_admin_audit.sql`）
+- 写入点：`confirmPayment`（manual_verified）与 `finalizeRefund`，通过 `src/lib/core/audit.ts` 尽力而为写入
+- 表不存在时静默跳过，不影响资金操作
+
+### 仍未实现（需要产品决策或服务端状态机）
+
+- 制作放行 `production-release` / 暂缓 `hold` / 要求补充资料 / 转交
+- 作品审核的通过 / 驳回动作（目前只有只读队列）
+- 四角色 RBAC（`platform_admins` 仍无 role 列）

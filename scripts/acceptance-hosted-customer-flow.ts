@@ -28,7 +28,7 @@ export async function verifyHostedCustomerFlow({
   checks: string[];
   runEvidence: unknown[];
 }) {
-  assert.equal(origin, 'https://oneboss-ai.onrender.com');
+  assert.equal(origin, (process.env.APP_URL || 'https://oneboss-ai.onrender.com'));
   const formatAcceptance = process.env.RUN_HOSTED_FORMAT_ACCEPTANCE === 'true';
   const dir = formatAcceptance ? '.cache/hosted-dual-formats' : '.cache/hosted-customer-ui';
   await mkdir(dir, { recursive: true });
