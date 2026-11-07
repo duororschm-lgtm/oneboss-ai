@@ -16,8 +16,14 @@ export function Checkout() {
     [busy, setBusy] = useState(false),
     [agree, setAgree] = useState(false);
   const [addons, setAddons] = useState<Row[]>([]),
-    [quantities, setQuantities] = useState<Record<string, number>>({});
+    [quantities, setQuantities] = useState<Record<string, string>>({});
+  const [payChannel, setPayChannel] = useState<'wechat' | 'alipay'>('wechat');
   const code = params.get('plan') || 'basic';
+
+  function qty(code: string): number {
+    const v = quantities[code];
+    return v === '' || v === undefined ? 0 : Math.max(0, Math.min(10, Math.trunc(Number(v))));
+  }
   useEffect(() => {
     void fetch('/api/core/plans')
       .then((r) => r.json())
@@ -38,8 +44,8 @@ export function Checkout() {
         orgId: org.id,
         planCode: code,
         addons: Object.entries(quantities)
-          .filter(([, qty]) => qty > 0)
-          .map(([code, qty]) => ({ code, qty })),
+          .filter(([, v]) => v !== '' && Number(v) > 0)
+          .map(([code, v]) => ({ code, qty: Math.trunc(Number(v)) })),
       });
       const order = await customerApi<Row>('commerce/orders', {
         orgId: org.id,
@@ -63,8 +69,7 @@ export function Checkout() {
           <h2>{plan.name}</h2>
           <p className="ob-price">
             {money(
-              plan.price_minor +
-                addons.reduce((sum, a) => sum + (quantities[a.code] || 0) * a.price_minor, 0),
+              plan.price_minor + addons.reduce((sum, a) => sum + qty(a.code) * a.price_minor, 0),
             )}
           </p>
           <div className="ob-metrics">
@@ -84,11 +89,59 @@ export function Checkout() {
           <p>包含交互宣传网站、二维码、小红书配套文案与 ZIP 交付包。</p>
           <fieldset className="ob-card" style={{ marginTop: 20 }}>
             <legend>支付方式</legend>
-            <label className="ob-check">
-              <input type="radio" name="paymentMethod" value="manual_verified" checked readOnly />
-              微信收款码 · 人工核验 {methods.manualVerified ? '' : '（配置中）'}
-            </label>
-            <p className="ob-muted">付款后提交付款说明，管理员核对真实到账后开放制作。</p>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+              <label
+                className="ob-check"
+                style={{
+                  padding: '14px 20px',
+                  border: `2px solid ${payChannel === 'wechat' ? '#22c55e' : '#ddd'}`,
+                  borderRadius: 12,
+                  cursor: 'pointer',
+                  flex: '1 1 180px',
+                  background: payChannel === 'wechat' ? '#f0fdf4' : '#fff',
+                }}
+              >
+                <input
+                  type="radio"
+                  name="payChannel"
+                  value="wechat"
+                  checked={payChannel === 'wechat'}
+                  onChange={() => setPayChannel('wechat')}
+                  style={{ display: 'none' }}
+                />
+                <strong>💚 微信支付</strong>
+                <br />
+                <small style={{ color: '#666' }}>人工核验到账</small>
+              </label>
+              <label
+                className="ob-check"
+                style={{
+                  padding: '14px 20px',
+                  border: `2px solid ${payChannel === 'alipay' ? '#1677ff' : '#ddd'}`,
+                  borderRadius: 12,
+                  cursor: 'pointer',
+                  flex: '1 1 180px',
+                  background: payChannel === 'alipay' ? '#eff6ff' : '#fff',
+                }}
+              >
+                <input
+                  type="radio"
+                  name="payChannel"
+                  value="alipay"
+                  checked={payChannel === 'alipay'}
+                  onChange={() => setPayChannel('alipay')}
+                  style={{ display: 'none' }}
+                />
+                <strong>💙 支付宝</strong>
+                <br />
+                <small style={{ color: '#666' }}>人工核验到账</small>
+              </label>
+            </div>
+            <p className="ob-muted">
+              {payChannel === 'wechat'
+                ? '选择微信收款码 · 付款后提交付款说明，管理员核对真实到账后开放制作。'
+                : '选择支付宝收款码 · 付款后提交付款说明，管理员核对真实到账后开放制作。'}
+            </p>
           </fieldset>
           {addons.length > 0 && (
             <div className="ob-form">
@@ -98,18 +151,20 @@ export function Checkout() {
                   {a.name} · 每份 {money(a.price_minor)}
                   <input
                     aria-label={`${a.name} 数量`}
-                    type="number"
-                    min={0}
-                    max={10}
-                    step={1}
-                    value={quantities[a.code] || 0}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={quantities[a.code] ?? ''}
                     onChange={(e) => {
-                      setQuantities({
-                        ...quantities,
-                        [a.code]: Math.max(0, Math.min(10, Math.trunc(Number(e.target.value)))),
-                      });
+                      const raw = e.target.value;
+                      if (raw === '') {
+                        setQuantities({ ...quantities, [a.code]: '' });
+                      } else if (/^\d{1,2}$/.test(raw) && Number(raw) <= 10) {
+                        setQuantities({ ...quantities, [a.code]: raw });
+                      }
                       setAgree(false);
                     }}
+                    placeholder="0"
                   />
                 </label>
               ))}

@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { fetchAgentRuns, ENDPOINTS, type AdminResult } from '../../../../lib/admin/api';
 import type { AgentRun } from '../../../../lib/admin/types';
-import { AGENT_ROLES, agentRoleName, agentStatus, dateTime } from '../../../../lib/admin/format';
+import { AGENT_ROLES, agentRoleName, agentStatus, dateTime, matchesAgentRole } from '../../../../lib/admin/format';
 import {
   Banner,
   EmptyState,
@@ -78,7 +78,7 @@ export default function AgentsPage() {
 
       <div className="ad-grid ad-grid-4">
         {AGENT_ROLES.map((role) => {
-          const latest = runs.find((run) => run.role === role.key || run.role === role.name);
+          const latest = runs.find((run) => matchesAgentRole(run.role, role.key));
           const state = latest ? agentStatus(latest.status) : null;
           return (
             <div className="ad-metric" key={role.key} data-state={!latest ? 'unsupported' : 'ready'}>
