@@ -12,7 +12,7 @@ export function proxy() {
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   response.headers.set(
     'Content-Security-Policy',
-    `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; connect-src 'self' ${authOrigin}; frame-ancestors 'none'; object-src 'none'; base-uri 'self'`,
+    `default-src 'self'; script-src 'self' 'unsafe-inline'${env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; connect-src 'self' ${authOrigin}; frame-ancestors 'none'; object-src 'none'; base-uri 'self'`,
   );
   return response;
 }
