@@ -35,11 +35,16 @@ export async function approveArtifact(
       100,
     );
     assert(body.site.designSystemVersion === d.body.version, 'DESIGN_VERSION_MISMATCH');
-    return { p, v, fs, assets, body };
+    return { p, v, fs, assets, body, design: DesignSystem.parse(d.body) };
   });
   const qa = await (
     await creative()
-  ).validateProduction({ production: context.body, facts: context.fs, assets: context.assets });
+  ).validateProduction({
+    production: context.body,
+    design: context.design,
+    facts: context.fs,
+    assets: context.assets,
+  });
   assert(qa.pass && qa.issues.length === 0, 'CREATIVE_QA_FAILED', 409);
   return idempotent(
     actor,
@@ -108,7 +113,7 @@ export async function publicProject(slug: string) {
   const body = Production.parse(v.body);
   const refs = [...new Set(body.site.pages.flatMap((x) => x.sections.flatMap((s) => s.factRefs)))];
   const fs =
-    await database()`select id,key,value,version from product_facts where project_id=${p.id} and verified and id=any(${refs}::uuid[])`;
+    await database()`select id,product_id as "productId",key,value,version,verified from product_facts where project_id=${p.id} and verified and id=any(${refs}::uuid[])`;
   const assetRefs = [
     ...new Set(body.site.pages.flatMap((x) => x.sections.flatMap((s) => s.assetRefs))),
   ];
@@ -131,5 +136,52 @@ export async function publicProject(slug: string) {
     facts: fs,
     assets: publicAssets,
     revision: p.published_revision,
+  };
+}
+
+/** Authenticated preview never changes the public pointer or grants publication evidence. */
+export async function previewProject(actor: Actor, projectId: string, revision: number) {
+  const context = await transaction(actor, async (tx) => {
+    const p = await project(tx, actor, projectId);
+    await entitlement(tx, p);
+    const [version] =
+      await tx`select body,fact_version from artifact_versions where project_id=${p.id} and revision=${revision}`;
+    assert(version && version.fact_version === p.fact_version, 'STALE_REVISION', 409);
+    const body = Production.parse(version.body);
+    const refs = [
+      ...new Set(
+        body.site.pages.flatMap((page) => page.sections.flatMap((section) => section.factRefs)),
+      ),
+    ];
+    const assetRefs = [
+      ...new Set(
+        body.site.pages.flatMap((page) => page.sections.flatMap((section) => section.assetRefs)),
+      ),
+    ];
+    const fs =
+      await tx`select id,product_id as "productId",key,value,version,verified from product_facts where project_id=${p.id} and verified and version=${version.fact_version} and id=any(${refs}::uuid[])`;
+    const assets =
+      await tx`select id,storage_path,width,height from media_assets where project_id=${p.id} and id=any(${assetRefs}::uuid[]) and license_status='customer_authorized'`;
+    const [design] =
+      await tx`select body from design_systems where project_id=${p.id} and revision=${body.site.designSystemVersion} and approved_at is not null`;
+    assert(design, 'DESIGN_MISSING', 503);
+    return {
+      site: body.site,
+      design: DesignSystem.parse(design.body),
+      facts: fs,
+      assets,
+      revision,
+    };
+  });
+  return {
+    ...context,
+    assets: await Promise.all(
+      context.assets.map(async (asset) => ({
+        id: asset.id,
+        width: asset.width,
+        height: asset.height,
+        url: await signed(asset.storage_path),
+      })),
+    ),
   };
 }

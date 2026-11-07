@@ -17,22 +17,24 @@ B：marketing/dashboard 页面、创意策略、网站和海报渲染器、客�
 
 ## B 服务端适配器
 
-`CREATIVE_ADAPTER_MODULE` 是部署受信任配置，指向 B 编译好的服务端 JS 模块绝对路径，不能由用户请求设置。该模块导出：
+`CREATIVE_ADAPTER_MODULE` 是部署受信任配置，不能由用户请求设置。设为 `builtin:b` 可启用从 B 提交 cdc04e2 接入的实际渲染器；也继续支持 B 编译好的服务端 JS 模块绝对路径。模块导出：
 
 ```ts
 renderSite({ site, design, facts, assets, pageSlug }) // ReactNode 或 Promise<ReactNode>
 renderPoster({ poster, design, facts, assets, publicSiteUrl })
 // Promise<{ pngBytes: Uint8Array, qrBytes: Uint8Array }>
-validateProduction({ production, facts, assets })
+validateProduction({ production, design, facts, assets }) // design 为可选的批准设计上下文
 // Promise<{ pass: boolean, issues: string[] }>
 ```
 
 完整接口见 `src/lib/core/creative.ts`。B 必须使用同一 React 实例、受控组件和真实 PNG 导出。
-公开渲染的 facts 只含引用到的已批准 id/key/value/version；assets 是已授权素材的短期签名 URL、尺寸和 ID，不含原始附件路径或付款资料。
+公开渲染的 facts 只含引用到的已批准 id/productId/key/value/version/verified；assets 是已授权素材的短期签名 URL、尺寸和 ID，不含原始附件路径或付款资料。
 生产任务上下文中的 assets 是内部素材元数据；B 的服务端海报适配器应通过受信任的 Storage SDK 读取这些授权路径，不允许自行抓取客户提供的任意 URL。
 网页至少一个交互控件添加 `data-oneboss-interaction`，点击后必须产生可观察的 DOM 改变，供 375/768/1280px 浏览器检查使用。
 
 A 组不会调用 B 的密钥，也不会在未接入时提供假完成适配器。
+
+内置适配器复用 `src/vendor/creative-b` 中的实际 B 引擎，转换位于 `src/lib/creative`；不使用 B 的演示订单或 localStorage Agent 记录。A 的根页面 slug `''` 在 B 引擎内部映射为 `home`，存储合同保持不变。网站 hero 的受控 `props.variant='black-gold'` 只影响网站，海报保持批准设计。授权实图通过 A 的签名 URL/Storage SDK 使用，不抓取客户任意 URL。
 
 ## HTTP 接口
 
@@ -58,6 +60,7 @@ POST 使用 JSON，素材上传使用原始二进制。请求体拒绝额外字�
 | POST /api/core/projects | `{orderId}`，只接受已授权订单 |
 | GET /api/core/projects/:id | 当前项目及发布状态 |
 | GET /api/core/projects/:id/data | 项目事实和素材元数据 |
+| GET /api/core/projects/:id/preview?revision=N | 授权私有预览数据；仅当前事实版本，不改发布指针 |
 | POST /api/core/projects/:id/assets | 原始 PNG/JPEG/WebP，`X-Asset-License: customer_authorized`，最大10MiB |
 | POST /api/core/projects/:id/intake | `{products,facts,brief}`，结构见 Zod；保存完整新事实快照，返回新 ID |
 | POST /api/core/projects/:id/analyze-intake | `{customerInput}`，排队真实模型追问，不自动确认事实 |
@@ -75,6 +78,8 @@ POST 使用 JSON，素材上传使用原始二进制。请求体拒绝额外字�
 | POST /api/core/projects/:id/accept | `{manifestVersion}`，只验收当前发布且事实未过时的交付 |
 
 素材权限及下载权限在服务器校验，不能靠隐藏按钮。重复 JSON POST 使用相同 Idempotency-Key 和同一 body；相同 key 不同内容返回 409。
+
+`/preview/:projectId/:revision` 提供带真实渲染的私有页面，导航请求必须携带同一 Supabase Bearer；不在 URL 中放 token，匿名/越权不能查看。该页面带 noindex，不提供公网已发布证明。B 的正式登录 UI 仍须接入真实 Auth 和 API，不可把本地演示状态当作服务器记录。
 素材上传每次生成新资产 ID；组织初始化按用户串行化并返回已有组织，不支持多组织创建 UI。
 
 ## 状态和恢复

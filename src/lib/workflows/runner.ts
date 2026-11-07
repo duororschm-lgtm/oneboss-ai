@@ -53,6 +53,7 @@ async function snapshot(run: Record<string, any>) {
 export async function runOne() {
   const run = await claimRun();
   if (!run) return false;
+  let usage: unknown = {};
   const heartbeat = setInterval(() => {
     void database()`update agent_runs set lease_until=now()+interval '5 minutes' where id=${run.id} and lease_token=${run.lease_token} and status='RUNNING'`.catch(
       () => {},
@@ -60,8 +61,7 @@ export async function runOne() {
   }, 30000);
   try {
     const context = await snapshot(run);
-    let output: unknown,
-      usage: unknown = {};
+    let output: unknown;
     if (run.role === 'publish') output = await publishRevision(run);
     else if (run.role === 'delivery') output = await createDelivery(run, context);
     else if (run.role === 'design') {
@@ -70,6 +70,7 @@ export async function runOne() {
         ...context,
         task: 'Generate 2–3 substantially different design directions. approvedByClient must be false.',
       });
+      usage = result.usage;
       assert(
         result.output.choices.every(
           (x) => !x.approvedByClient && x.factVersion === context.p.fact_version,
@@ -77,25 +78,26 @@ export async function runOne() {
         'INVALID_DESIGN_APPROVAL',
       );
       output = result.output;
-      usage = result.usage;
     } else if (run.role === 'intake') {
       const result = await callMimo(IntakeResult, 'product analyst', {
         ...context,
         customerInput: run.input.customerInput,
         task: 'Propose facts and one critical question. All newly proposed facts must be unverified. Output exactly facts, nextQuestion, draftReady, warnings. Fact IDs and productId values must be valid UUIDs. When no product IDs are supplied, return an empty facts array and use nextQuestion to ask for the missing product information; never invent a product ID.',
       });
+      usage = result.usage;
       assert(
         result.output.facts.every((x) => !x.verified),
         'MODEL_CANNOT_CONFIRM_FACTS',
       );
       output = result.output;
-      usage = result.usage;
     } else if (run.role === 'generate') {
       assert(context.design && context.brief, 'DESIGN_APPROVAL_REQUIRED');
       const result = await callMimo(Production, 'production team', {
         ...context,
-        task: 'Generate site, posters and copy referencing only supplied verified facts. Each poster must use a unique copy pack.',
+        previousValidationError: run.error_class ?? null,
+        task: `Generate site, posters and copy referencing only supplied verified facts. BUSINESS CONTRACT: site.pages MUST contain exactly one root page whose slug is the EMPTY STRING "", never "home" or "/". Other page slugs must be unique lowercase a-z, digits or hyphens. Every section type must also appear in site.allowedSectionTypes. Include specs information tabs as a real interaction. Fact refs must be actual supplied approved fact IDs, never keys or invented UUIDs. Asset refs must be actual supplied asset IDs; return [] when none exist. Set all projectId and factVersion values to the supplied project. Use the approved design version for site and all posters. Generate exactly the brief deliverables.posterCount posters and the same number of copy packs, each poster referencing a different existing copy ID. If a previousValidationError is supplied, correct that invariant; do not repeat the rejected structure.`,
       });
+      usage = result.usage;
       validateProduction(
         result.output,
         context.p.id,
@@ -109,7 +111,6 @@ export async function runOne() {
         'DESIGN_VERSION_MISMATCH',
       );
       output = result.output;
-      usage = result.usage;
     } else if (run.role === 'change') {
       const [change] =
         await database()`select * from change_requests where id=${run.input.changeId}`;
@@ -134,7 +135,7 @@ export async function runOne() {
           ...context,
           base: base.body,
           operations: parsed.output,
-          task: 'Return the full production bundle, changing only the requested artifacts. Preserve all other fields exactly.',
+          task: 'Return the full production bundle, changing only the requested artifacts. Preserve all other fields exactly. For a website-only black-and-gold style request, set only the hero section props.variant to black-gold; this is a supported site presentation preset. Do not change the approved design system version or the posters/copy for a site-only request.',
         });
         usage = { parse: parsed.usage, revision: revised.usage };
         const b = Production.parse(base.body),
@@ -202,7 +203,7 @@ export async function runOne() {
       ].includes(code);
     await database().begin(async (tx) => {
       const rows =
-        await tx`update agent_runs set status=${terminal ? 'FAILED' : 'QUEUED'},error_class=${code},lease_token=null,lease_until=null,completed_at=${terminal ? new Date() : null},next_attempt_at=now()+${run.attempt * 10}*interval '1 second' where id=${run.id} and lease_token=${run.lease_token} returning id`;
+        await tx`update agent_runs set status=${terminal ? 'FAILED' : 'QUEUED'},error_class=${code},usage=${tx.json(usage as any)},lease_token=null,lease_until=null,completed_at=${terminal ? new Date() : null},next_attempt_at=now()+${run.attempt * 10}*interval '1 second' where id=${run.id} and lease_token=${run.lease_token} returning id`;
       if (rows.length && terminal) {
         await tx`update projects set status='GENERATION_FAILED' where id=${run.project_id}`;
         if (run.role === 'change') {

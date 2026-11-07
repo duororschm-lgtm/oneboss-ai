@@ -16,6 +16,7 @@ import QRCode from 'qrcode';
 import sharp from 'sharp';
 import * as adapters from '../../src/lib/core/creative';
 import { createDelivery } from '../../src/lib/delivery/service';
+import { previewProject } from '../../src/lib/publishing/service';
 const url = process.env.TEST_DATABASE_URL;
 if (!url)
   throw new Error(
@@ -350,6 +351,44 @@ describe.sequential('real PostgreSQL business invariants', () => {
       expect(version.body.site.seo.title).toBe('椅子展示新版');
       const [recorded] = await db`select usage from agent_runs where id=${changeRun.id}`;
       expect(recorded.usage.revision.total_tokens).toBe(42);
+    } finally {
+      mock.mockRestore();
+    }
+  });
+  it('previews only the tenant current fact snapshot without publishing or exposing private paths', async () => {
+    const signer = vi.spyOn(files, 'signed');
+    try {
+      await expect(previewProject(stranger, projectId, 1)).rejects.toThrow('FORBIDDEN');
+      expect(signer).not.toHaveBeenCalled();
+      const preview = await previewProject(owner, projectId, 1);
+      expect(preview.facts.every((f) => f.verified && f.version === 2 && f.productId)).toBe(true);
+      expect(preview.facts.every((f) => !('source' in f))).toBe(true);
+      const [p] = await db`select published_revision from projects where id=${projectId}`;
+      expect(p.published_revision).toBeNull();
+    } finally {
+      signer.mockRestore();
+    }
+  });
+  it('retains provider usage when business validation rejects a model response', async () => {
+    const [base] =
+      await db`select body from artifact_versions where project_id=${projectId} and revision=1`;
+    const output = structuredClone(base.body);
+    output.site.pages[0].slug = 'home';
+    const mock = vi
+      .spyOn(gateway, 'callMimo')
+      .mockResolvedValueOnce({ output, usage: { total_tokens: 11 } });
+    try {
+      const r = await transaction(owner, (tx) =>
+        core.enqueue(tx, owner, projectId, 'generate', {}),
+      );
+      await db`update agent_runs set max_attempts=1 where id=${r.id}`;
+      await runOne();
+      const [saved] = await db`select status,error_class,usage from agent_runs where id=${r.id}`;
+      expect(saved).toMatchObject({
+        status: 'FAILED',
+        error_class: 'INVALID_SITE_PAGES',
+        usage: { total_tokens: 11 },
+      });
     } finally {
       mock.mockRestore();
     }

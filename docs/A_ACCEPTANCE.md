@@ -68,3 +68,29 @@
 该数据库回归中的模型、B 适配器、公开 URL 检查和 Storage 使用受控替身。PNG/QR/ZIP 字节真实生成并校验，但不是 B 的真实客户作品或公网交付证明。
 
 当前本地数据库连接、Supabase 可发布/服务端 Key、MiMo Key 仍待所有者私下填写。B 适配器也未配置。以上回归不能替代最新 Render 部署、托管订单/worker、真实 B 页面、中文海报和手机扫码验收。
+
+## 2026-11-07 本机真实凭据与 B 接入进展
+
+用户已在本地安全填写数据库、Supabase 可发布/服务端 Key 与 MiMo Key。配置格式检查通过；原生 PostgreSQL 可读取 2 个活跃套餐；Supabase Auth settings 返回 200，私有桶元数据确认 public=false。
+
+Windows Node HTTPS 直连曾出现 ECONNRESET。使用机器现有的本地 HTTP 代理 127.0.0.1:10808，并对本地地址设置 NO_PROXY 后通过；没有关闭 TLS 或修改系统网络设置。代理只在本机进程使用，不应抄到 Render。
+
+本机真实验收 `acceptance:a` 通过：run=af29026f-89d8-4671-938c-9fda381375f8，attempt=1，MiMo total_tokens=2024；2 个临时 Auth 用户已删除，专用本地测试库已移除。真实业务写入只发生在专用本地测试库。`acceptance:hosted` 也重新通过：真实 Render Bearer、授权 DB 查询、RLS 与禁止客户端改付款，临时 Auth 用户 1 个已删除，无托管业务记录创建。
+
+用户提供 B 源码 onsboss-b（cdc04e2）。已保留原目录并复用真实网站/海报引擎，通过 A 侧适配层映射合同。B 原 34 项测试通过；A 本地新增真实 B PNG/QR/授权图片/引用/排版回归。B 的 localStorage 演示订单、支付和 Agent 日志未接到生产后端，不能作为完整客户工作台验收。
+
+第一次扩展真实创意验收中，MiMo 设计方向生成成功（d06cd3cb-8a8a-491d-be26-1d1969bf0ae2，3196 tokens），生产结果被 INVALID_SITE_PAGES 拒绝；2 个临时用户清理成功。已明确根页面空 slug 的模型业务合同，并补充业务校验失败时的用量记录，正在重新验收。该失败未产生公开作品，不算生产成功。
+
+## 本机真实 B 创意与浏览器验收通过（2026-11-07）
+
+修正模型业务合同后，扩展验收 `npm run acceptance:b` 已通过。它复用原有空本地数据库保护，真实创建/登录两个临时 Supabase 用户，经生产 HTTP API、独立 worker 和真实 MiMo 完成资料分析、创意方向、Production 生成，再调用实际 B 渲染器 QA 与客户版本批准。
+
+- 分析 run：0dc1d4b8-1144-4183-84d0-944b542cccd6，首轮，2466 tokens。
+- 设计 run：17e378e5-67a1-487a-b52f-11f56aec2436，首轮，3321 tokens。
+- 生产 run：fece9634-3c4f-48b9-aef8-cea87185c370，首轮，7963 tokens。
+- Edge/Playwright 实际加载 B 的 Next 客户端组件，375/768/1280 宽度无横向溢出，信息标签切换真实改变 DOM，无浏览器异常。
+- 私有预览、租户隔离、匿名预览拒绝、未发布公开 slug 返回 404 均通过；预览不会修改发布指针。
+- 临时 Auth 用户 2 个全部删除。业务数据只落专用本地测试库，不创建托管订单或收款记录。
+- 同一真实 Production 经实际 B SVG/Sharp 输出 1080×1350 PNG，95500 bytes，SHA256=67e8e368c6a7a725c9870a14e3649ac6bfabd74fc01baad428e49300ef5ef13e；中文排版已查看，独立二维码解码通过。该文件是隔离渲染样张，二维码使用测试目标，不是公网交付文件。
+
+最新本地回归为 54 项单元、27 项 PostgreSQL 集成；B 原仓库 34 项测试另行通过。数据库/模型/API/worker 和 B 浏览器预览在扩展验收中均为真实实现；正式 HTTPS 发布、手机扫码、私有成品 ZIP 与托管 worker 仍需部署后验收。B 原客户工作台仍使用演示状态，不能把它描述为已接真实订单。

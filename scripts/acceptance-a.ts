@@ -56,7 +56,7 @@ function start(args: string[]) {
   return child;
 }
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-async function api(path: string, token?: string, body?: unknown, key = randomUUID(), status = 200) {
+async function api(path: string, token?: string, body?: unknown, key: string = randomUUID(), status = 200) {
   const response = await fetch(`${origin}/api/${path}`, {
     method: body === undefined ? 'GET' : 'POST',
     headers: {
@@ -256,6 +256,20 @@ try {
   checks.push(
     'separate worker consumes HTTP job, real MiMo schema output persisted, run access isolated',
   );
+  if (process.env.RUN_CREATIVE_ACCEPTANCE === 'true') {
+    phase = 'real-creative-workflow';
+    const { verifyCreativeFlow } = await import('./acceptance-creative');
+    await verifyCreativeFlow({
+      api,
+      db,
+      owner,
+      stranger,
+      projectId: project.id,
+      orgId: org.id,
+      origin,
+      checks,
+    });
+  }
 } catch (error) {
   failure = true;
   console.error(

@@ -47,3 +47,19 @@ npm run check:config
 命令只显示缺失变量名称和格式问题，不显示值、不连接远端。`configurationReady=true` 表示格式和必需项通过，实际连接、权限及模型调用还需后续验收。
 
 本地开发分别运行 `npm run dev`、`npm run worker`；生产构建后可用 `npm run start:service` 同时运行 HTTP 和 worker。修改 `.env.local` 后需重启进程。仅本地网页可用不代表已接入 B 组或完成公网交付。
+
+## 5. 本机代理与 B 渲染器
+
+Node 不自动读取 Windows 系统代理。如果本机已启用 HTTP 代理且 Node 请求出现 ECONNRESET，可在当前 PowerShell 设置实际的本地地址。本机已验证的示例是：
+
+```powershell
+$env:HTTPS_PROXY = 'http://127.0.0.1:10808'
+$env:HTTP_PROXY = 'http://127.0.0.1:10808'
+$env:NO_PROXY = 'localhost,127.0.0.1,::1'
+```
+
+仅当本机确实运行该代理时使用；不关闭 TLS，不把本机代理地址填到 Render。
+
+内置的实际 B 网站/海报渲染器使用 `CREATIVE_ADAPTER_MODULE="builtin:b"`。它复用 B 的 React/SVG 引擎并消费 A 的批准资料，B 原目录中的演示付款与本地 Agent 日志仍是演示。
+
+`npm run acceptance:b` 在 `acceptance:a` 的同一空本地库保护下，进一步调用真实 MiMo 生成设计和 Production，执行真实 B QA、批准和私有浏览器预览。会产生实际模型调用费用，临时账号由脚本清理；不自动执行公网发布。Windows 浏览器检查使用已安装的 Edge，其他系统需安装 Playwright Chromium。

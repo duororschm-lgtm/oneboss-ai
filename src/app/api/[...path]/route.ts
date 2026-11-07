@@ -6,7 +6,7 @@ import { database, transaction, type Tx } from '../../../lib/core/db';
 import * as service from '../../../lib/core/service';
 import { Id, Revision, DesignChoices, ChangeRequest } from '../../../contracts';
 import { signed, uploadAsset } from '../../../lib/core/storage';
-import { approveArtifact } from '../../../lib/publishing/service';
+import { approveArtifact, previewProject } from '../../../lib/publishing/service';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 const response = (value: unknown, status = 200) =>
@@ -134,6 +134,12 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
       orgId = p.org_id;
       if (method === 'GET') {
         if (path.length === 3) return response(p);
+        if (path[3] === 'preview' && path.length === 4) {
+          const revision = Revision.parse(
+            Number(new URL(request.url).searchParams.get('revision')),
+          );
+          return response(await previewProject(actor, id, revision));
+        }
         if (path[3] === 'delivery')
           return response(
             await transaction(actor, async (tx) => {

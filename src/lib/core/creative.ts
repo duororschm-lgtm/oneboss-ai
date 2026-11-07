@@ -21,6 +21,7 @@ export interface CreativeAdapter {
   }): Promise<{ pngBytes: Uint8Array; qrBytes: Uint8Array }>;
   validateProduction(input: {
     production: z.infer<typeof Production>;
+    design?: z.infer<typeof DesignSystem>;
     facts: unknown[];
     assets: unknown[];
   }): Promise<{ pass: boolean; issues: string[] }>;
@@ -28,6 +29,7 @@ export interface CreativeAdapter {
 export async function creative(): Promise<CreativeAdapter> {
   const path = process.env.CREATIVE_ADAPTER_MODULE;
   if (!path) throw new AppError('B_RENDERER_NOT_CONNECTED', 503);
+  if (path === 'builtin:b') return import('../creative/b-adapter');
   // Deployment-controlled module, never taken from requests or model output.
   if (!isAbsolute(path)) throw new AppError('B_ADAPTER_PATH_MUST_BE_ABSOLUTE', 503);
   const adapter = await import(/* webpackIgnore: true */ pathToFileURL(path).href);

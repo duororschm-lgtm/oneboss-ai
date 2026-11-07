@@ -39,6 +39,8 @@ TEST_DATABASE_URL=postgres://postgres@127.0.0.1:55432/oneboss_test npm run test:
 npm run build
 # 配置真实 MiMo 后执行，失败返回非零退出码
 npm run smoke:mimo
+# 使用同样的空本地验收库与真实凭据，增加实际 B 渲染器和私有浏览器验收（实际模型费用）
+npm run acceptance:b
 # B 渲染器与正式 HTTPS 部署接入后
 npx playwright install chromium
 npm run smoke:public -- <published-slug>
