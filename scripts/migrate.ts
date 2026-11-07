@@ -12,7 +12,11 @@ try {
       .filter((n) => n.endsWith('.sql'))
       .sort()) {
       const body = await readFile(`supabase/migrations/${name}`, 'utf8'),
-        hash = createHash('sha256').update(body).digest('hex');
+        // 哈希按 LF 归一后计算：Windows 的 core.autocrlf=true 会把 SQL 检出成 CRLF，
+        // 若直接对原始内容取哈希，会和数据库里记录的 LF 哈希不一致，导致迁移被误判为"被修改"。
+        hash = createHash('sha256')
+          .update(body.replace(/\r\n/g, '\n'))
+          .digest('hex');
       const [previous] = await sql`select hash from oneboss_migrations where name=${name}`;
       if (previous) {
         if (previous.hash !== hash) throw new Error(`Migration changed: ${name}`);
