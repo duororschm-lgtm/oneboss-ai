@@ -7,6 +7,7 @@ import { DesignChoices, Production, ParsedChange, IntakeResult } from '../../con
 import { callMimo } from '../mimo/gateway';
 import { validateProduction, validateBlueprintAdherence } from '../core/validation';
 import { checkDesignDistinctness } from '../creative/design-distinctness';
+import { assessAssetQuality } from '../visual-assets/asset-quality';
 import { publishRevision } from '../publishing/service';
 import { createDelivery } from '../delivery/service';
 
@@ -38,7 +39,7 @@ DESIGN DNA fields:
 SITE BLUEPRINT (each direction has its own page structure):
 - pages: 1–3 pages, each { slug: "" for root (empty string), title, sections: 1–12 }
 - sections: each { type, layout, factKeys?, assetRoles?, note? }
-  - type MUST be one of: hero, gallery, features, specs, product-grid, brand, story, contact
+  - type MUST be one of: hero, gallery, features, specs, product-grid, brand, story, contact, product-3d
   - layout: { variant, columns?, alignment?, width?, emphasis?, background?, imageRatio? }
     - variant vocabulary (only use what fits; pick DIFFERENT variants per direction):
       hero: split-editorial | full-bleed | centered-stage | type-led | asymmetric
@@ -48,6 +49,7 @@ SITE BLUEPRINT (each direction has its own page structure):
       product-grid: two-column | three-column | horizontal-rail
       story: split-story | manifesto | image-led
       contact: minimal-cta | editorial-banner | contact-panel
+      product-3d: full-width-stage | split-annotation | immersive-section
     - width: narrow|standard|wide|full; emphasis: image-led|text-led|balanced
     - background: plain|surface|inverted|accent; imageRatio: square|portrait|landscape|wide
     - columns: 1–4; alignment: left|center|right
@@ -178,10 +180,25 @@ export async function runOne() {
         },
       };
     } else if (run.role === 'intake') {
+      const assetReport = assessAssetQuality({
+        imageCount: context.assets.length,
+        productDescription: run.input.customerInput?.slice(0, 200) || '',
+        customerConfidence: 'unknown',
+      });
       const result = await callMimo(IntakeResult, 'product analyst', {
         ...context,
+        assetQuality: assetReport,
         customerInput: run.input.customerInput,
-        task: 'Propose facts and one critical question. All newly proposed facts must be unverified. Output exactly facts, nextQuestion, draftReady, warnings. Fact IDs and productId values must be valid UUIDs. When no product IDs are supplied, return an empty facts array and use nextQuestion to ask for the missing product information; never invent a product ID.',
+        task: `Propose facts and one critical question. All newly proposed facts must be unverified. Output exactly facts, nextQuestion, draftReady, warnings. Fact IDs and productId values must be valid UUIDs. When no product IDs are supplied, return an empty facts array and use nextQuestion to ask for the missing product information; never invent a product ID.
+
+ASSET QUALITY: ${JSON.stringify(assetReport)}.
+Based on the asset quality assessment:
+- ${assetReport.recommendedStrategy}
+- ${assetReport.followUpQuestions.length} suggested follow-up questions available
+- Customer can skip questions they cannot answer
+- Use nextQuestion to ask the MOST IMPORTANT question first (${assetReport.followUpQuestions[0] || 'product identification'})
+- Distinguish customer facts from image inference and concept assumptions
+- Never present concept/inferred details as confirmed product facts`,
       });
       usage = result.usage;
       assert(

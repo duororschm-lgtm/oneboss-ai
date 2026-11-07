@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OneBoss 3D 概念椅 — 交互式拆解 Demo</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    background: #0f1419;
+    color: #eee;
+    overflow: hidden;
+    height: 100vh;
+  }
+  #canvas-container {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+  }
+  canvas { display: block; }
+
+  /* Header */
+  .header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 20px 28px;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.6), transparent);
+    pointer-events: none;
+    z-index: 10;
+  }
+  .header h1 { font-size: 22px; font-weight: 700; }
+  .header p { font-size: 13px; color: #888; margin-top: 4px; }
+  .badge {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 4px 14px;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 20px;
+    font-size: 11px;
+    color: #aaa;
+  }
+
+  /* Controls */
+  .controls {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    background: rgba(20,20,20,0.85);
+    backdrop-filter: blur(16px);
+    padding: 16px 24px;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.1);
+    z-index: 10;
+  }
+  .slider-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .slider-group label {
+    font-size: 12px;
+    color: #888;
+    white-space: nowrap;
+  }
+  .slider-group input[type="range"] {
+    width: 180px;
+    accent-color: #57f0bd;
+    cursor: pointer;
+  }
+  .slider-value {
+    font-size: 14px;
+    font-weight: 700;
+    color: #57f0bd;
+    min-width: 48px;
+    text-align: center;
+  }
+  .btn {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: #eee;
+    padding: 10px 18px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    transition: background 0.2s;
+    white-space: nowrap;
+  }
+  .btn:hover { background: rgba(255,255,255,0.2); }
+  .btn.primary { background: #57f0bd; color: #04211a; font-weight: 600; border: none; }
+  .btn.primary:hover { background: #45d8a6; }
+
+  /* Part panel */
+  .part-panel {
+    position: absolute;
+    top: 100px;
+    right: 20px;
+    width: 220px;
+    background: rgba(20,20,20,0.85);
+    backdrop-filter: blur(16px);
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.1);
+    padding: 16px;
+    z-index: 10;
+  }
+  .part-panel h3 {
+    font-size: 14px;
+    margin-bottom: 12px;
+    color: #57f0bd;
+  }
+  .part-item {
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+    color: #ccc;
+  }
+  .part-item:hover {
+    border-color: rgba(87,240,189,0.3);
+    background: rgba(87,240,189,0.05);
+  }
+  .part-item.active {
+    border-color: #57f0bd;
+    background: rgba(87,240,189,0.12);
+    color: #fff;
+    font-weight: 600;
+  }
+  .part-info {
+    margin-top: 12px;
+    padding: 12px;
+    background: rgba(87,240,189,0.08);
+    border: 1px solid rgba(87,240,189,0.2);
+    border-radius: 8px;
+    font-size: 12px;
+    color: #aaa;
+    line-height: 1.6;
+    display: none;
+  }
+  .part-info.visible { display: block; }
+  .part-info strong { color: #57f0bd; display: block; margin-bottom: 4px; }
+
+  /* Trust badge */
+  .trust-badge {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: rgba(0,0,0,0.5);
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 11px;
+    color: #aaa;
+    backdrop-filter: blur(8px);
+    z-index: 10;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+
+  /* Mobile */
+  @media (max-width: 768px) {
+    .part-panel {
+      top: auto;
+      bottom: 120px;
+      right: 10px;
+      left: 10px;
+      width: auto;
+    }
+    .controls {
+      flex-wrap: wrap;
+      justify-content: center;
+      width: calc(100% - 20px);
+      bottom: 10px;
+    }
+    .slider-group input[type="range"] { width: 120px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="canvas-container">
+  <div class="header">
+    <h1>交互式 3D 产品展示</h1>
+    <p>拖动旋转 · 滑块拆解 · 点击部件查看说明</p>
+    <span class="badge">conceptual_exploded · 概念结构示意 · 非商家实拍</span>
+  </div>
+
+  <div class="trust-badge">WebGL 实时渲染 · 真实 3D Mesh</div>
+
+  <div class="part-panel">
+    <h3>部件列表</h3>
+    <div class="part-item" data-part="backrest" onclick="selectPart('backrest')">弧形靠背</div>
+    <div class="part-item" data-part="seat" onclick="selectPart('seat')">坐垫</div>
+    <div class="part-item" data-part="frame" onclick="selectPart('frame')">支撑结构</div>
+    <div class="part-item" data-part="leg-fl" onclick="selectPart('leg-fl')">前左椅腿</div>
+    <div class="part-item" data-part="leg-fr" onclick="selectPart('leg-fr')">前右椅腿</div>
+    <div class="part-item" data-part="leg-bl" onclick="selectPart('leg-bl')">后左椅腿</div>
+    <div class="part-item" data-part="leg-br" onclick="selectPart('leg-br')">后右椅腿</div>
+    <div class="part-info" id="part-info">
+      <strong id="part-info-title"></strong>
+      <span id="part-info-desc">概念结构部件 · 客户描述的 AI 概念拆解，非工程验证结构。</span>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="slider-group">
+      <label>拆解程度</label>
+      <input type="range" id="explode-slider" min="0" max="100" value="0" oninput="updateExplode(this.value)">
+      <div class="slider-value" id="explode-value">0%</div>
+    </div>
+    <button class="btn" onclick="resetView()">重置视角</button>
+    <button class="btn" onclick="setExplode(0)">组装</button>
+    <button class="btn primary" onclick="setExplode(100)">完全拆解</button>
+    <button class="btn" onclick="toggleAutoRotate()">自动旋转</button>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// --- Scene setup ---
+const container = document.getElementById('canvas-container');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0f1419);
+scene.fog = new THREE.Fog(0x0f1419, 12, 28);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(3.2, 2.4, 3.8);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+container.appendChild(renderer.domElement);
+
+// --- Lights ---
+const ambient = new THREE.AmbientLight(0x404050, 0.6);
+scene.add(ambient);
+
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+dirLight.position.set(5, 8, 5);
+dirLight.castShadow = true;
+dirLight.shadow.mapSize.width = 2048;
+dirLight.shadow.mapSize.height = 2048;
+dirLight.shadow.camera.near = 0.5;
+dirLight.shadow.camera.far = 30;
+dirLight.shadow.camera.left = -6;
+dirLight.shadow.camera.right = 6;
+dirLight.shadow.camera.top = 6;
+dirLight.shadow.camera.bottom = -6;
+scene.add(dirLight);
+
+const fillLight = new THREE.DirectionalLight(0x8090b0, 0.35);
+fillLight.position.set(-4, 3, -3);
+scene.add(fillLight);
+
+const rimLight = new THREE.DirectionalLight(0x57f0bd, 0.15);
+rimLight.position.set(0, -2, -4);
+scene.add(rimLight);
+
+// --- Ground ---
+const groundGeo = new THREE.PlaneGeometry(30, 30);
+const groundMat = new THREE.MeshStandardMaterial({
+  color: 0x141a1e,
+  roughness: 0.9,
+  metalness: 0.05,
+});
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.55;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// --- Materials ---
+const woodMat = new THREE.MeshStandardMaterial({
+  color: 0xa67c52,
+  roughness: 0.62,
+  metalness: 0.06,
+});
+const woodDarkMat = new THREE.MeshStandardMaterial({
+  color: 0x7a5a3a,
+  roughness: 0.58,
+  metalness: 0.08,
+});
+const fabricMat = new THREE.MeshStandardMaterial({
+  color: 0x8a9a8e,
+  roughness: 0.85,
+  metalness: 0.02,
+});
+const accentMat = new THREE.MeshStandardMaterial({
+  color: 0x57f0bd,
+  roughness: 0.4,
+  metalness: 0.15,
+  emissive: 0x57f0bd,
+  emissiveIntensity: 0.15,
+});
+
+// --- Chair parts ---
+const parts = {};
+const partData = {
+  'backrest': {
+    label: '弧形靠背',
+    offset: [0, 1.3, -0.7],
+    desc: '符合人体工学的弧形靠背设计，为客户描述的 AI 概念结构。',
+  },
+  'seat': {
+    label: '坐垫',
+    offset: [0, 0.5, 0.5],
+    desc: '柔软坐垫概念，材质为客户描述，非工程验证。',
+  },
+  'frame': {
+    label: '支撑结构',
+    offset: [0, -0.2, -0.9],
+    desc: '连接靠背与椅腿的主体框架，概念示意结构。',
+  },
+  'leg-fl': { label: '前左椅腿', offset: [-0.9, -1.1, 0.7], desc: '前左支撑腿，概念示意。' },
+  'leg-fr': { label: '前右椅腿', offset: [0.9, -1.1, 0.7], desc: '前右支撑腿，概念示意。' },
+  'leg-bl': { label: '后左椅腿', offset: [-0.9, -1.1, -0.7], desc: '后左支撑腿，概念示意。' },
+  'leg-br': { label: '后右椅腿', offset: [0.9, -1.1, -0.7], desc: '后右支撑腿，概念示意。' },
+};
+
+// Backrest
+const backrestGroup = new THREE.Group();
+const backMain = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.72, 0.06), woodMat);
+backMain.castShadow = true;
+backrestGroup.add(backMain);
+const backPanel = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.58, 0.02), woodDarkMat);
+backPanel.position.z = 0.04;
+backrestGroup.add(backPanel);
+backrestGroup.position.set(0, 1.05, -0.28);
+scene.add(backrestGroup);
+parts['backrest'] = { group: backrestGroup, basePos: [0, 1.05, -0.28] };
+
+// Seat
+const seatGroup = new THREE.Group();
+const seatCushion = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.1, 0.78), fabricMat);
+seatCushion.castShadow = true;
+seatGroup.add(seatCushion);
+seatGroup.position.set(0, 0.48, 0);
+scene.add(seatGroup);
+parts['seat'] = { group: seatGroup, basePos: [0, 0.48, 0] };
+
+// Frame
+const frameGroup = new THREE.Group();
+const frameBase = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.06, 0.84), woodDarkMat);
+frameBase.castShadow = true;
+frameGroup.add(frameBase);
+frameGroup.position.set(0, 0.38, 0);
+scene.add(frameGroup);
+parts['frame'] = { group: frameGroup, basePos: [0, 0.38, 0] };
+
+// Legs
+const legPositions = {
+  'leg-fl': [-0.36, 0.16, 0.36],
+  'leg-fr': [0.36, 0.16, 0.36],
+  'leg-bl': [-0.36, 0.16, -0.36],
+  'leg-br': [0.36, 0.16, -0.36],
+};
+for (const [id, [x, y, z]] of Object.entries(legPositions)) {
+  const legGroup = new THREE.Group();
+  const leg = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.36, 0.07), woodMat);
+  leg.castShadow = true;
+  legGroup.add(leg);
+  legGroup.position.set(x, y, z);
+  scene.add(legGroup);
+  parts[id] = { group: legGroup, basePos: [x, y, z] };
+}
+
+// --- Controls ---
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.enablePan = false;
+controls.minDistance = 2;
+controls.maxDistance = 8;
+controls.maxPolarAngle = Math.PI * 0.85;
+
+// --- State ---
+let explodeAmount = 0;
+let selectedPart = null;
+let autoRotate = false;
+
+window.updateExplode = (val) => {
+  explodeAmount = val / 100;
+  document.getElementById('explode-value').textContent = val + '%';
+  for (const [id, part] of Object.entries(parts)) {
+    const data = partData[id];
+    part.group.position.set(
+      part.basePos[0] + data.offset[0] * explodeAmount,
+      part.basePos[1] + data.offset[1] * explodeAmount,
+      part.basePos[2] + data.offset[2] * explodeAmount
+    );
+  }
+};
+
+window.setExplode = (val) => {
+  document.getElementById('explode-slider').value = val;
+  window.updateExplode(val);
+};
+
+window.resetView = () => {
+  camera.position.set(3.2, 2.4, 3.8);
+  controls.target.set(0, 0.5, 0);
+  controls.update();
+};
+
+window.toggleAutoRotate = () => {
+  autoRotate = !autoRotate;
+  controls.autoRotate = autoRotate;
+  controls.autoRotateSpeed = 1.5;
+};
+
+window.selectPart = (id) => {
+  // Deselect previous
+  if (selectedPart && parts[selectedPart]) {
+    parts[selectedPart].group.traverse((child) => {
+      if (child.isMesh && child._originalMaterial) {
+        child.material = child._originalMaterial;
+      }
+    });
+  }
+
+  if (selectedPart === id) {
+    selectedPart = null;
+    document.querySelectorAll('.part-item').forEach(el => el.classList.remove('active'));
+    document.getElementById('part-info').classList.remove('visible');
+    return;
+  }
+
+  selectedPart = id;
+
+  // Highlight
+  if (parts[id]) {
+    parts[id].group.traverse((child) => {
+      if (child.isMesh) {
+        if (!child._originalMaterial) child._originalMaterial = child.material;
+        child.material = accentMat;
+      }
+    });
+  }
+
+  // Update UI
+  document.querySelectorAll('.part-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.part === id);
+  });
+  const data = partData[id];
+  document.getElementById('part-info-title').textContent = data.label;
+  document.getElementById('part-info-desc').textContent = data.desc;
+  document.getElementById('part-info').classList.add('visible');
+};
+
+// --- Raycaster for click selection ---
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+renderer.domElement.addEventListener('click', (event) => {
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+
+  const allMeshes = [];
+  for (const part of Object.values(parts)) {
+    part.group.traverse((child) => {
+      if (child.isMesh) {
+        child.userData.partId = Object.entries(parts).find(([, p]) => p.group === part.group)?.[0];
+        allMeshes.push(child);
+      }
+    });
+  }
+
+  const intersects = raycaster.intersectObjects(allMeshes);
+  if (intersects.length > 0) {
+    const partId = intersects[0].object.userData.partId;
+    if (partId) window.selectPart(partId);
+  }
+});
+
+// --- Resize ---
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// --- Animation loop ---
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+console.log('OneBoss 3D Demo loaded — WebGL scene ready');
+</script>
+
+</body>
+</html>

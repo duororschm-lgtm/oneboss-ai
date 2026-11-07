@@ -396,6 +396,20 @@ function mapSiteForView(
         },
       ];
     }
+    if (section.type === 'product-3d')
+      return [
+        {
+          type: 'product-3d',
+          id,
+          layout,
+          props: {
+            title: get('name') ? `${get('name')} · 3D 展示` : '3D 产品展示',
+            description: '交互式 3D 产品模型，可旋转、缩放和拆解查看。',
+            modelTrust: 'conceptual_exploded',
+            variant3d: (section.props as any).variant3d || 'full-width-stage',
+          },
+        },
+      ];
     return [
       {
         type: 'story',
