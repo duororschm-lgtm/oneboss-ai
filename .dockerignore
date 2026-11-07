@@ -13,4 +13,6 @@ test-results
 playwright-report
 attachments
 .local
+.cache
+.planning
 scratch

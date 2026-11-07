@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start --hostname 0.0.0.0",
     "typecheck": "tsc --noEmit",
+    "check:config": "tsx --env-file-if-exists=.env.local scripts/check-config.ts",
     "test": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
     "db:migrate": "tsx --env-file-if-exists=.env.local scripts/migrate.ts",

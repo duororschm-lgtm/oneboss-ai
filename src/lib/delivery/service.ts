@@ -8,7 +8,13 @@ import { creative } from '../core/creative';
 import { store } from '../core/storage';
 import { appOrigin, verifyPublicUrl } from '../security/network';
 import { DeliveryManifest, Production } from '../../contracts';
-export async function inspectPng(bytes: Uint8Array, width: number, height: number, url: string) {
+export async function inspectPng(
+  bytes: Uint8Array,
+  width: number,
+  height: number,
+  url: string,
+  placement?: 'auto_bottom_right_or_left' | 'bottom-right' | 'bottom-left',
+) {
   const buffer = Buffer.from(bytes);
   assert(buffer.length < 20 * 1024 * 1024, 'PNG_TOO_LARGE');
   assert(
@@ -27,6 +33,18 @@ export async function inspectPng(bytes: Uint8Array, width: number, height: numbe
   const { data, info } = await image.ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const qr = jsQR(new Uint8ClampedArray(data), info.width, info.height);
   assert(qr?.data === url, 'QR_TARGET_INVALID');
+  if (placement) {
+    const { topLeftCorner, topRightCorner, bottomLeftCorner, bottomRightCorner } = qr.location;
+    const x = (topLeftCorner.x + topRightCorner.x + bottomLeftCorner.x + bottomRightCorner.x) / 4;
+    const y = (topLeftCorner.y + topRightCorner.y + bottomLeftCorner.y + bottomRightCorner.y) / 4;
+    const left = x <= width * 0.4;
+    const right = x >= width * 0.6;
+    assert(
+      y >= height * 0.6 &&
+        (placement === 'bottom-left' ? left : placement === 'bottom-right' ? right : left || right),
+      'QR_PLACEMENT_INVALID',
+    );
+  }
   return { width, height, size: buffer.length, sha256: hash(buffer) };
 }
 export async function createDelivery(run: Record<string, any>, context: Record<string, any>) {
@@ -35,7 +53,10 @@ export async function createDelivery(run: Record<string, any>, context: Record<s
   assert(p.browser_verified_revision === p.published_revision, 'BROWSER_QA_REQUIRED');
   const [existing] =
     await database()`select manifest from deliveries where project_id=${p.id} and revision=${p.published_revision}`;
-  if (existing) return existing.manifest;
+  if (existing) {
+    assert(existing.manifest.factVersion === p.fact_version, 'FACT_VERSION_CHANGED', 409);
+    return existing.manifest;
+  }
   const [version] =
     await database()`select * from artifact_versions where project_id=${p.id} and revision=${p.published_revision}`;
   assert(version.fact_version === p.fact_version, 'FACT_VERSION_CHANGED', 409);
@@ -66,7 +87,13 @@ export async function createDelivery(run: Record<string, any>, context: Record<s
       assets: context.assets,
       publicSiteUrl: url,
     });
-    const info = await inspectPng(result.pngBytes, poster.canvas.width, poster.canvas.height, url);
+    const info = await inspectPng(
+      result.pngBytes,
+      poster.canvas.width,
+      poster.canvas.height,
+      url,
+      poster.qr.placement,
+    );
     const path = `posters/poster-${i + 1}.png`,
       qrPath = `qrcode/qr-${i + 1}.png`;
     // Independently verify the standalone QR file as well.
@@ -120,7 +147,8 @@ export async function createDelivery(run: Record<string, any>, context: Record<s
       lease &&
         current.fact_version === p.fact_version &&
         current.published_revision === p.published_revision &&
-        current.published_verified,
+        current.published_verified &&
+        current.browser_verified_revision === p.published_revision,
       'DELIVERY_VERSION_CONFLICT',
       409,
     );

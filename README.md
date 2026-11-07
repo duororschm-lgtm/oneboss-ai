@@ -23,6 +23,7 @@ npm run worker
 
 - [A/B 接口合同与接入说明](docs/PROJECT_CONTRACT.md)
 - [配置、启动、故障恢复与验收](docs/RUNBOOK.md)
+- [Windows 本地凭据填写](docs/LOCAL_SETUP_WINDOWS.md)
 - [A 后端 Docker / Render 开发部署](docs/DEPLOY_RENDER.md)
 - [当前验证证据与未完成项](docs/demo-proof.md)
 - [开源选型记录](docs/opensource-audit-a.md)
@@ -31,6 +32,7 @@ npm run worker
 
 ```sh
 npm run typecheck
+npm run check:config # 只检查必需配置与格式，不输出值、不连接远端
 npm test
 # 指向空的、可丢弃的 PostgreSQL 数据库；测试拒绝已有业务表
 TEST_DATABASE_URL=postgres://postgres@127.0.0.1:55432/oneboss_test npm run test:integration

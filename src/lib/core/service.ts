@@ -293,6 +293,8 @@ export async function saveIntake(tx: Tx, actor: Actor, id: string, input: z.infe
   );
   assert(input.brief.approval === 'pending', 'APPROVAL_REQUIRES_SEPARATE_ACTION');
   const productIds = new Set(input.products.map((x) => x.id));
+  assert(productIds.size === input.products.length, 'DUPLICATE_PRODUCT');
+  assert(new Set(input.facts.map((x) => x.id)).size === input.facts.length, 'DUPLICATE_FACT');
   assert(
     input.brief.productIds.every((x) => productIds.has(x)),
     'INVALID_PRODUCT_REF',
@@ -303,7 +305,7 @@ export async function saveIntake(tx: Tx, actor: Actor, id: string, input: z.infe
     await tx`insert into products(id,org_id,project_id,name,description) values(${item.id},${p.org_id},${p.id},${item.name},${item.description}) on conflict(id) do update set name=excluded.name,description=excluded.description`;
   }
   // Facts are immutable by version; customer-confirmed replacement creates a new complete snapshot.
-  const [{ n }] = await tx`select count(*)::int n from product_facts where project_id=${p.id}`;
+  const [{ n }] = await tx`select count(*)::int n from creative_briefs where project_id=${p.id}`;
   const version = n ? p.fact_version + 1 : p.fact_version;
   const refs = new Set<string>();
   for (const f of input.facts) {

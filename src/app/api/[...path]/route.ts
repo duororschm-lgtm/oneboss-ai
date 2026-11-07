@@ -41,7 +41,9 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
         status: 'running',
         configured: {
           database: !!process.env.DATABASE_URL,
-          auth: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+          auth: !!(
+            process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+          ),
           mimo: !!(process.env.MIMO_API_KEY && process.env.MIMO_MODEL),
           creative: !!process.env.CREATIVE_ADAPTER_MODULE,
         },
@@ -332,7 +334,13 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
             if (action === 'accept') {
               const b = z.object({ manifestVersion: Revision }).strict().parse(body),
                 p = await service.project(tx, actor, id);
+              await service.entitlement(tx, p);
               assert(p.published_revision === b.manifestVersion, 'STALE_DELIVERY', 409);
+              assert(
+                p.published_verified && p.browser_verified_revision === p.published_revision,
+                'VERIFIED_SITE_REQUIRED',
+                409,
+              );
               const rows =
                 await tx`update deliveries set status='ACCEPTED',accepted_at=now() where project_id=${id} and revision=${b.manifestVersion} and (manifest->>'factVersion')::int=${p.fact_version} returning id`;
               assert(rows.length, 'DELIVERY_NOT_READY', 409);

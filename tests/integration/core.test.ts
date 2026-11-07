@@ -11,6 +11,11 @@ import * as auth from '../../src/lib/security/auth';
 import * as files from '../../src/lib/core/storage';
 import { GET, POST } from '../../src/app/api/[...path]/route';
 import { fixture } from '../fixtures';
+import JSZip from 'jszip';
+import QRCode from 'qrcode';
+import sharp from 'sharp';
+import * as adapters from '../../src/lib/core/creative';
+import { createDelivery } from '../../src/lib/delivery/service';
 const url = process.env.TEST_DATABASE_URL;
 if (!url)
   throw new Error(
@@ -260,6 +265,20 @@ describe.sequential('real PostgreSQL business invariants', () => {
     ).toBe(0);
     await db`update agent_runs set status='FAILED' where id=${r.id}`;
   });
+  it('finishes exhausted crashed jobs with a timestamp and no active lease', async () => {
+    const r = await transaction(owner, (tx) => core.enqueue(tx, owner, projectId, 'intake', {}));
+    await db`update agent_runs set status='RUNNING',attempt=max_attempts,lease_token=${randomUUID()},lease_until=now()-interval '1 minute' where id=${r.id}`;
+    expect(await claimRun()).toBeUndefined();
+    const [job] =
+      await db`select status,error_class,completed_at,lease_token,lease_until from agent_runs where id=${r.id}`;
+    expect(job).toMatchObject({
+      status: 'FAILED',
+      error_class: 'LEASE_EXHAUSTED',
+      lease_token: null,
+      lease_until: null,
+    });
+    expect(job.completed_at).toBeInstanceOf(Date);
+  });
   it('marks missing model credentials as failure, never fake success', async () => {
     delete process.env.MIMO_API_KEY;
     delete process.env.MIMO_MODEL;
@@ -267,10 +286,12 @@ describe.sequential('real PostgreSQL business invariants', () => {
       core.enqueue(tx, owner, projectId, 'intake', { customerInput: 'test' }),
     );
     await runOne();
-    const [saved] = await db`select status,error_class,output from agent_runs where id=${r.id}`;
+    const [saved] =
+      await db`select status,error_class,output,completed_at from agent_runs where id=${r.id}`;
     expect(saved.status).toBe('FAILED');
     expect(saved.error_class).toBe('MIMO_NOT_CONFIGURED');
     expect(saved.output).toBeNull();
+    expect(saved.completed_at).toBeInstanceOf(Date);
   });
   it('persists generated output and preserves posters on a website-only change', async () => {
     const [latestBrief] =
@@ -295,9 +316,11 @@ describe.sequential('real PostgreSQL business invariants', () => {
       const run = await transaction(owner, (tx) =>
         core.enqueue(tx, owner, projectId, 'generate', {}),
       );
+      await db`update agent_runs set error_class='PREVIOUS_ATTEMPT_FAILED' where id=${run.id}`;
       await runOne();
-      const [result] = await db`select status from agent_runs where id=${run.id}`;
+      const [result] = await db`select status,error_class from agent_runs where id=${run.id}`;
       expect(result.status).toBe('SUCCEEDED');
+      expect(result.error_class).toBeNull();
       await db`update artifact_versions set status='APPROVED',approved_by=${owner.userId} where project_id=${projectId} and revision=1`;
       const revised = structuredClone(production);
       revised.site.seo.title = '椅子展示新版';
@@ -311,8 +334,8 @@ describe.sequential('real PostgreSQL business invariants', () => {
         },
         usage: {},
       });
-      mock.mockResolvedValueOnce({ output: revised, usage: {} });
-      await transaction(owner, (tx) =>
+      mock.mockResolvedValueOnce({ output: revised, usage: { total_tokens: 42 } });
+      const changeRun = await transaction(owner, (tx) =>
         core.requestChange(tx, owner, projectId, {
           targetArtifacts: 'site',
           instruction: '只修改网站标题，海报不变',
@@ -325,6 +348,8 @@ describe.sequential('real PostgreSQL business invariants', () => {
       expect(version.body.posters).toEqual(production.posters);
       expect(version.body.copy).toEqual(production.copy);
       expect(version.body.site.seo.title).toBe('椅子展示新版');
+      const [recorded] = await db`select usage from agent_runs where id=${changeRun.id}`;
+      expect(recorded.usage.revision.total_tokens).toBe(42);
     } finally {
       mock.mockRestore();
     }
@@ -408,6 +433,160 @@ describe.sequential('real PostgreSQL business invariants', () => {
     } finally {
       identity.mockRestore();
       signer.mockRestore();
+    }
+  });
+  it('assembles actual PNG/QR/copy ZIP bytes and accepts only the matching delivery', async () => {
+    // A-side contract test: renderer, HTTP proof and Storage are controlled test doubles.
+    // It does not establish B rendering quality or a public customer delivery.
+    const oldOrigin = process.env.APP_URL;
+    process.env.APP_URL = 'https://oneboss.example';
+    const url = `https://oneboss.example/p/${(await db`select publish_slug from projects where id=${projectId}`)[0].publish_slug}`;
+    const qr = await QRCode.toBuffer(url, { width: 300, margin: 4 });
+    const png = await sharp({
+      create: {
+        width: 1080,
+        height: 1350,
+        channels: 4,
+        background: '#f1f1f1',
+      },
+    })
+      .composite([{ input: qr, left: 750, top: 1020 }])
+      .png()
+      .toBuffer();
+    const uploaded = new Map<string, Buffer>();
+    const storage = vi.spyOn(files, 'store').mockImplementation(async (path, bytes) => {
+      uploaded.set(path, Buffer.from(bytes));
+      return path;
+    });
+    const http = vi
+      .spyOn(network, 'verifyPublicUrl')
+      .mockResolvedValue('data-oneboss-revision="2"');
+    const adapter = vi.spyOn(adapters, 'creative').mockResolvedValue({
+      renderSite: () => null,
+      renderPoster: async () => ({ pngBytes: png, qrBytes: qr }),
+      validateProduction: async () => ({ pass: true, issues: [] }),
+    });
+    const identity = vi.spyOn(auth, 'authenticate').mockResolvedValue(owner);
+    try {
+      await db`update projects set published_revision=2,published_verified=true,browser_verified_revision=2 where id=${projectId}`;
+      const r = await transaction(owner, (tx) =>
+        core.enqueue(tx, owner, projectId, 'delivery', {}),
+      );
+      await runOne();
+      const [job] = await db`select status,error_class from agent_runs where id=${r.id}`;
+      expect(job).toMatchObject({ status: 'SUCCEEDED' });
+      const [delivery] =
+        await db`select * from deliveries where project_id=${projectId} and revision=2`;
+      expect(delivery.manifest.factVersion).toBe(2);
+      const archive = await JSZip.loadAsync(uploaded.get(delivery.zip_path)!);
+      expect(Object.keys(archive.files)).toEqual(
+        expect.arrayContaining([
+          'posters/poster-1.png',
+          'qrcode/qr-1.png',
+          'copy/xiaohongshu-poster-1.md',
+          'site-url.txt',
+          'README-交付说明.md',
+          'manifest.json',
+        ]),
+      );
+      expect(await archive.file('site-url.txt')!.async('string')).toBe(url);
+      for (const file of delivery.manifest.files) {
+        const bytes = await archive.file(file.path)!.async('nodebuffer');
+        expect(bytes.length).toBe(file.size);
+        expect(core.hash(bytes)).toBe(file.sha256);
+      }
+      const accept = await POST(
+        new Request(`http://localhost/api/core/projects/${projectId}/accept`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Idempotency-Key': randomUUID() },
+          body: JSON.stringify({ manifestVersion: 2 }),
+        }),
+        { params: Promise.resolve({ path: ['core', 'projects', projectId, 'accept'] }) },
+      );
+      expect(accept.status).toBe(200);
+      const [p] = await db`select * from projects where id=${projectId}`;
+      expect(p.status).toBe('ACCEPTED');
+      // A new fact snapshot cannot reuse the previous ZIP under the same publication.
+      await expect(createDelivery({}, { p: { ...p, fact_version: 3 } })).rejects.toThrow(
+        'FACT_VERSION_CHANGED',
+      );
+    } finally {
+      storage.mockRestore();
+      http.mockRestore();
+      adapter.mockRestore();
+      identity.mockRestore();
+      if (oldOrigin) process.env.APP_URL = oldOrigin;
+      else delete process.env.APP_URL;
+    }
+  });
+  it('empty fact snapshots still advance version and invalidate queued work', async () => {
+    const q = await transaction(owner, (tx) => core.createQuote(tx, orgId, 'basic'));
+    const o = await transaction(owner, (tx) => core.createOrder(tx, orgId, q.id, true));
+    const attempt = await transaction(owner, (tx) => core.checkout(tx, owner, o.id, 'sandbox'));
+    await transaction(owner, (tx) =>
+      core.confirmPayment(
+        tx,
+        owner,
+        o.id,
+        {
+          attemptId: attempt.attempt.id,
+          eventId: randomUUID(),
+          amountMinor: o.amount_minor,
+          currency: 'CNY',
+          evidenceRef: 'sandbox-empty-facts',
+        },
+        'sandbox',
+      ),
+    );
+    const p = await transaction(owner, (tx) => core.createProject(tx, owner, o.id));
+    const f = fixture();
+    const input = {
+      products: [{ id: f.productId, name: '待补资料', description: '' }],
+      facts: [],
+      brief: {
+        projectId: p.id,
+        organizationId: orgId,
+        productIds: [f.productId],
+        objective: '宣传',
+        confirmedFacts: [],
+        assetRefs: [],
+        preferredStyles: [],
+        restrictions: [],
+        deliverables: { site: true as const, posterCount: 1, xhsCopy: true as const },
+        approval: 'pending' as const,
+      },
+    };
+    await transaction(owner, (tx) => core.saveIntake(tx, owner, p.id, input));
+    const r = await transaction(owner, (tx) => core.enqueue(tx, owner, p.id, 'intake', {}));
+    await transaction(owner, (tx) => core.saveIntake(tx, owner, p.id, input));
+    const [saved] = await db`select fact_version from projects where id=${p.id}`;
+    expect(saved.fact_version).toBe(2);
+    await runOne();
+    const [job] = await db`select status,error_class from agent_runs where id=${r.id}`;
+    expect(job.status).toBe('FAILED');
+    expect(job.error_class).toBe('FACT_VERSION_CHANGED');
+  });
+  it('refuses acceptance while publication is unverified or browser QA is stale', async () => {
+    const identity = vi.spyOn(auth, 'authenticate').mockResolvedValue(owner);
+    try {
+      const accept = () =>
+        POST(
+          new Request(`http://localhost/api/core/projects/${projectId}/accept`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Idempotency-Key': randomUUID() },
+            body: JSON.stringify({ manifestVersion: 1 }),
+          }),
+          { params: Promise.resolve({ path: ['core', 'projects', projectId, 'accept'] }) },
+        );
+      await db`update projects set published_revision=1,published_verified=false,browser_verified_revision=1 where id=${projectId}`;
+      expect((await (await accept()).json()).error.code).toBe('VERIFIED_SITE_REQUIRED');
+      await db`update projects set published_verified=true,browser_verified_revision=null where id=${projectId}`;
+      expect((await (await accept()).json()).error.code).toBe('VERIFIED_SITE_REQUIRED');
+      await db`update projects set browser_verified_revision=1 where id=${projectId}`;
+      // The minimal download fixture has no factVersion and cannot be accepted.
+      expect((await (await accept()).json()).error.code).toBe('DELIVERY_NOT_READY');
+    } finally {
+      identity.mockRestore();
     }
   });
   it('refund request revokes production but is not a completed refund', async () => {

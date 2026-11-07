@@ -13,7 +13,7 @@ export async function claimRun() {
   // Expired leases can be reclaimed; final expired attempt becomes terminal, never stranded.
   await database().begin(async (tx) => {
     const expired =
-      await tx`update agent_runs set status='FAILED',error_class='LEASE_EXHAUSTED',lease_token=null where status='RUNNING' and lease_until<now() and attempt>=max_attempts returning project_id,role,input`;
+      await tx`update agent_runs set status='FAILED',error_class='LEASE_EXHAUSTED',lease_token=null,lease_until=null,completed_at=now() where status='RUNNING' and lease_until<now() and attempt>=max_attempts returning project_id,role,input`;
     for (const job of expired) {
       await tx`update projects set status='GENERATION_FAILED' where id=${job.project_id}`;
       if (job.role === 'change') {
@@ -121,6 +121,7 @@ export async function runOne() {
         base: base.body,
         task: 'Parse requested scope. Never expand scope. Price or claim changes require fact confirmation.',
       });
+      usage = { parse: parsed.usage };
       const target = change.target === 'all' ? ['site', 'poster', 'copy'] : [change.target];
       assert(
         parsed.output.targetArtifacts.every((x) => target.includes(x)),
@@ -135,6 +136,7 @@ export async function runOne() {
           operations: parsed.output,
           task: 'Return the full production bundle, changing only the requested artifacts. Preserve all other fields exactly.',
         });
+        usage = { parse: parsed.usage, revision: revised.usage };
         const b = Production.parse(base.body),
           r = revised.output;
         if (!target.includes('site'))
@@ -153,7 +155,6 @@ export async function runOne() {
         );
         output = { parsed: parsed.output, production: r, requiresFactApproval: false };
       }
-      usage = { parse: parsed.usage };
     } else throw new AppError('UNKNOWN_TASK');
     await database().begin(async (tx) => {
       const [locked] =
@@ -180,7 +181,7 @@ export async function runOne() {
         if (value.requiresFactApproval)
           await tx`update project_entitlements set remaining_revisions=remaining_revisions+1 where order_id=${p.service_order_id}`;
       }
-      await tx`update agent_runs set status='SUCCEEDED',output=${tx.json(output as any)},usage=${tx.json(usage as any)},lease_token=null,lease_until=null,completed_at=now() where id=${run.id}`;
+      await tx`update agent_runs set status='SUCCEEDED',error_class=null,output=${tx.json(output as any)},usage=${tx.json(usage as any)},lease_token=null,lease_until=null,completed_at=now() where id=${run.id}`;
     });
   } catch (error) {
     const code =
@@ -201,7 +202,7 @@ export async function runOne() {
       ].includes(code);
     await database().begin(async (tx) => {
       const rows =
-        await tx`update agent_runs set status=${terminal ? 'FAILED' : 'QUEUED'},error_class=${code},lease_token=null,lease_until=null,next_attempt_at=now()+${run.attempt * 10}*interval '1 second' where id=${run.id} and lease_token=${run.lease_token} returning id`;
+        await tx`update agent_runs set status=${terminal ? 'FAILED' : 'QUEUED'},error_class=${code},lease_token=null,lease_until=null,completed_at=${terminal ? new Date() : null},next_attempt_at=now()+${run.attempt * 10}*interval '1 second' where id=${run.id} and lease_token=${run.lease_token} returning id`;
       if (rows.length && terminal) {
         await tx`update projects set status='GENERATION_FAILED' where id=${run.project_id}`;
         if (run.role === 'change') {
