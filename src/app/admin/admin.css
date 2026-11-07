@@ -1,6 +1,9 @@
 /* OneBoss Admin Console —— 与客户平台 ob-* 样式完全隔离 */
 
-.ad-root {
+/* 设计变量必须同时挂在 .ad-root 和 .ad-login 上：
+   登录页不在 .ad-root 内，否则 var(--ad-*) 全部为空，输入框边框和按钮背景会失效。 */
+.ad-root,
+.ad-login {
   --ad-bg: #f6f7f9;
   --ad-surface: #ffffff;
   --ad-surface-2: #fbfcfd;
@@ -21,7 +24,9 @@
   --ad-info-bg: #e8f1fb;
   --ad-radius: 8px;
   --ad-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+}
 
+.ad-root {
   display: grid;
   grid-template-columns: 232px minmax(0, 1fr);
   min-height: 100vh;
