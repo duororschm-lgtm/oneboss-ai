@@ -6,6 +6,7 @@ import { useCustomer, customerApi } from './session';
 import { Notice, Loading, money, statusLabel } from './shell';
 import type { Account, Row } from '../../lib/customer/types';
 import { ProjectStudio } from './studio';
+import { ProductionProgress } from './production-progress';
 import { usePaymentMethods } from './payment-methods';
 import { ManualPayment } from './manual-payment';
 
@@ -101,7 +102,11 @@ export function Dashboard({ path }: { path: string[] }) {
         {path[0] === 'admin' ? (
           <p>管理员平台已迁至独立的 <Link href="/admin">/admin</Link> 入口，正在跳转…</p>
         ) : projectId ? (
-          <ProjectStudio key={projectId} id={projectId} section={path[2] || 'intake'} />
+          <>
+            {/* 生产进度中心：真实 agent_runs + task_events，不显示虚构百分比 */}
+            <ProductionProgress projectId={projectId} />
+            <ProjectStudio key={projectId} id={projectId} section={path[2] || 'intake'} />
+          </>
         ) : path[0] === 'orders' && path[1] ? (
           <OrderDetail id={path[1]} onChanged={load} />
         ) : !account ? (
