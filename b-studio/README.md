@@ -160,3 +160,4 @@ const png = await sharp(Buffer.from(buildPosterSvg(poster, design, seed))).png()
 - 系统字体提供 CJK 渲染；生产服务端需确认字体授权并按 Satori/Sharp 方案配置。
 - 多产品详情在当前页面内切换，未拆成独立路由。
 
+
