@@ -324,20 +324,12 @@ function SectionView({
     case 'cta': {
       const href = safeHref(section.props.href);
       return (
-        <section className={`site-section cta-section ${lc}`}>
-          <div>
-            <span className="eyebrow">NEXT</span>
-            <h2>{section.props.title}</h2>
-            <p>{section.props.body}</p>
-          </div>
-          {href ? (
-            <a className="cta-button" href={href}>
-              {section.props.label} <ArrowUpRight size={18} />
-            </a>
-          ) : (
-            <span className="cta-muted">联系方式待客户确认后展示</span>
-          )}
-        </section>
+        <CtaSection
+          key={section.id}
+          section={section}
+          lc={lc}
+          href={href}
+        />
       );
     }
     case 'product-3d':
@@ -379,11 +371,12 @@ function Gallery({
 }) {
   const total = section.props.assetRefs.length;
   const [index, setIndex] = useState(0);
+  const [zoomed, setZoomed] = useState(false);
   const startX = useRef<number | null>(null);
   const move = (delta: number) => setIndex((current) => (current + delta + total) % total);
   const variant = section.layout?.variant ?? '';
-  const isGrid = variant === 'masonry' || variant === 'editorial-grid';
-  const isStrip = variant === 'horizontal-strip';
+  const isGrid = variant === 'masonry' || variant === 'editorial-grid' || variant === 'masonry-lite';
+  const isStrip = variant === 'horizontal-strip' || variant === 'image-rail';
   const isPair = variant === 'featured-pair';
 
   if (isGrid) {
@@ -464,6 +457,7 @@ function Gallery({
           if (startX.current === null) return;
           const delta = event.clientX - startX.current;
           if (Math.abs(delta) > 40) move(delta > 0 ? -1 : 1);
+          else setZoomed(true); // Short tap → zoom
           startX.current = null;
         }}
       >
@@ -507,6 +501,16 @@ function Gallery({
             </button>
           ))}
           {section.props.assetRefs.length === 0 && <span>暂无图片</span>}
+        </div>
+      )}
+      {zoomed && (
+        <div className="image-zoom-overlay" onClick={() => setZoomed(false)}>
+          <button className="zoom-close" onClick={() => setZoomed(false)}>×</button>
+          <ProductArt
+            asset={assetOf(section.props.assetRefs[index])}
+            palette={design.palette}
+            styleId={design.styleId}
+          />
         </div>
       )}
     </section>
@@ -790,6 +794,50 @@ function Product3DSection({
           ? '真实分件模型，拆解为工程验证结构。'
           : '概念结构示意，拆解为 AI 概念展示，非商家实拍。'}
       </p>
+    </section>
+  );
+}
+
+function CtaSection({
+  section,
+  lc,
+  href,
+}: {
+  section: Extract<SiteSection, { type: 'cta' }>;
+  lc?: string;
+  href?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(section.props.body);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard may be unavailable; ignore silently
+    }
+  };
+  return (
+    <section className={`site-section cta-section ${lc}`}>
+      <div>
+        <span className="eyebrow">NEXT</span>
+        <h2>{section.props.title}</h2>
+        <p>{section.props.body}</p>
+      </div>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        {href ? (
+          <a className="cta-button" href={href}>
+            {section.props.label} <ArrowUpRight size={18} />
+          </a>
+        ) : null}
+        <button
+          type="button"
+          className={`copy-contact-btn ${copied ? 'copied' : ''}`}
+          onClick={handleCopy}
+        >
+          {copied ? '已复制 ✓' : '复制联系方式'}
+        </button>
+      </div>
     </section>
   );
 }

@@ -98,6 +98,8 @@ export const SiteBlueprint = z
                     // Semantic keys resolved server-side into real fact IDs. Never UUIDs from the model.
                     factKeys: z.array(z.string().min(1).max(100)).max(20).optional(),
                     assetRoles: z.array(z.string().min(1).max(50)).max(10).optional(),
+                    interactionIds: z.array(z.string().min(1).max(100)).max(5).optional(),
+                    motionId: z.string().max(100).optional(),
                     note: z.string().max(300).optional(),
                   })
                   .strict(),
@@ -145,6 +147,17 @@ export const DesignSystem = z
       })
       .strict()
       .optional(),
+    // --- V4 Design DNA enhancements ---
+    secondaryAccent: z
+      .string()
+      .regex(/^#[a-fA-F0-9]{6}$/)
+      .optional(),
+    gradientStops: z.array(z.string().regex(/^#[a-fA-F0-9]{6}$/)).min(2).max(4).optional(),
+    gridStyle: z.enum(['editorial', 'asymmetric', 'modular', 'full-bleed']).optional(),
+    visualMotif: z
+      .enum(['clean-lines', 'organic-shapes', 'geometric-grid', 'soft-glow', 'bold-blocks', 'fine-details'])
+      .optional(),
+    motionLanguage: z.enum(['calm', 'expressive', 'energetic']).optional(),
     siteBlueprint: SiteBlueprint.optional(),
   })
   .strict();
@@ -364,3 +377,48 @@ export const ExplodedViewSpec = z
   })
   .strict();
 export type ExplodedViewSpecType = z.infer<typeof ExplodedViewSpec>;
+
+// --- V4 Interaction & Motion Schemas ---
+export const InteractionKind = z.enum([
+  'gallery-carousel',
+  'image-zoom',
+  'tabs',
+  'accordion',
+  'product-hotspots',
+  'product-compare',
+  'image-before-after',
+  'copy-contact',
+  'anchor-navigation',
+]);
+export type InteractionKindType = z.infer<typeof InteractionKind>;
+
+export const InteractionSpec = z
+  .object({
+    id: z.string().min(1).max(100),
+    kind: InteractionKind,
+    options: z.record(z.string(), z.union([z.string().max(200), z.number(), z.boolean()])),
+  })
+  .strict();
+export type InteractionSpecType = z.infer<typeof InteractionSpec>;
+
+export const MotionKind = z.enum([
+  'entrance-reveal',
+  'stagger-text',
+  'scroll-reveal',
+  'sticky-story',
+  'parallax-light',
+  'hover-feedback',
+  'section-transition',
+]);
+export type MotionKindType = z.infer<typeof MotionKind>;
+
+export const MotionSpec = z
+  .object({
+    id: z.string().min(1).max(100),
+    kind: MotionKind,
+    intensity: z.enum(['low', 'medium', 'high']),
+    durationMs: z.number().int().min(100).max(3000),
+    delayMs: z.number().int().min(0).max(2000).optional(),
+  })
+  .strict();
+export type MotionSpecType = z.infer<typeof MotionSpec>;

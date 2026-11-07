@@ -11,58 +11,84 @@ import { assessAssetQuality } from '../visual-assets/asset-quality';
 import { publishRevision } from '../publishing/service';
 import { createDelivery } from '../delivery/service';
 
-const DESIGN_TASK = `You are a commercial brand Creative Director. Generate 2–3 design directions for this product, each a complete art direction — not a template pick, not a palette swap.
+const DESIGN_TASK = `You are a commercial brand Creative Director and Interactive Web Art Director. Generate 2–3 design directions for this product — each a complete art direction with distinct visual language, page composition, interaction plan and motion rhythm. Not a template pick, not a palette swap.
 
 First analyze the product: category, form, material evidence, target audience, use scenario, customer emphasis, and the images' composition/light. Design FROM the product. Do not default to a SaaS tech landing page for every product.
 
 Each direction must carry a full Design DNA and a Site Blueprint:
 
 DESIGN DNA fields:
-- styleId: short lowercase slug (a-z, hyphens) naming this visual identity. Free-form; do NOT reuse a fixed preset name unless it genuinely fits.
+- styleId: short lowercase slug (a-z, hyphens) naming this visual identity. Free-form.
 - name: direction name (max 100 chars)
 - tagline: one-line visual positioning
 - visualConcept: the design concept (why this fits the product)
 - visualKeywords: 2–5 visual keywords
 - rationale: why this design serves this product
-- palette: semantic hex tokens — keys MUST include background,surface,text,muted,accent,accentText,border
+- palette: semantic hex tokens — keys MUST include background,surface,text,muted,accent,accentText,border. Optionally add secondaryAccent (hex).
+- gradientStops: optional array of 2–4 hex colors for controlled gradients (e.g. hero background). Keep low-frequency; not every section.
 - typography: font tokens — keys MUST include display,body,mono (font stack strings); optionally scale (0.8–1.4)
 - spacingScale: array of 1–4 numbers (px rhythm)
 - radiusScale: array of 1–2 numbers (px)
 - layoutMode: free-form short slug describing overall layout character
 - motionPreset: one of none | subtle | energetic
+- motionLanguage: calm | expressive | energetic (drives animation intensity and rhythm)
 - density: airy | balanced | dense
+- gridStyle: editorial | asymmetric | modular | full-bleed
 - imageTreatment: full-bleed | framed | collage | minimal
+- visualMotif: clean-lines | organic-shapes | geometric-grid | soft-glow | bold-blocks | fine-details
 - heroComposition: split-editorial | full-bleed | centered-stage | type-led | asymmetric
 - pageGrid: { contentWidth: narrow|standard|wide|full, columns: 4–12, gutter: 0–64 }
 - siteBlueprint: see below
 
 SITE BLUEPRINT (each direction has its own page structure):
 - pages: 1–3 pages, each { slug: "" for root (empty string), title, sections: 1–12 }
-- sections: each { type, layout, factKeys?, assetRoles?, note? }
-  - type MUST be one of: hero, gallery, features, specs, product-grid, brand, story, contact, product-3d
+- sections: each { type, layout, factKeys?, assetRoles?, interactionIds?, motionId?, note? }
+  - type MUST be one of: hero, gallery, features, specs, product-grid, brand, story, contact
   - layout: { variant, columns?, alignment?, width?, emphasis?, background?, imageRatio? }
-    - variant vocabulary (only use what fits; pick DIFFERENT variants per direction):
+    - variant vocabulary (pick DIFFERENT variants per direction):
       hero: split-editorial | full-bleed | centered-stage | type-led | asymmetric
-      gallery: masonry | editorial-grid | horizontal-strip | featured-pair
-      features: bento | numbered-list | editorial-columns | horizontal-steps
-      specs: technical-table | spec-cards | tabs | accordion
-      product-grid: two-column | three-column | horizontal-rail
-      story: split-story | manifesto | image-led
-      contact: minimal-cta | editorial-banner | contact-panel
-      product-3d: full-width-stage | split-annotation | immersive-section
+      gallery: editorial-grid | masonry-lite | image-rail | cinematic-stage
+      features: bento | numbered-story | illustrated-list | side-by-side
+      specs: tabs | information-cards | technical-table | accordion
+      product-grid: interactive-product-selector | comparison | horizontal-showcase
+      story: sticky-split | staggered-story | full-width-manifesto
+      contact: editorial-banner | floating-cta | compact-contact
     - width: narrow|standard|wide|full; emphasis: image-led|text-led|balanced
-    - background: plain|surface|inverted|accent; imageRatio: square|portrait|landscape|wide
+    - background: plain|surface|inverted|accent|gradient
+    - imageRatio: square|portrait|landscape|wide
     - columns: 1–4; alignment: left|center|right
-  - factKeys: semantic fact keys to display here (e.g. "name","description","price","brand","category","scenario","contact"). NEVER UUIDs.
-  - assetRoles: semantic image roles (e.g. "hero","gallery-1","detail","lifestyle"). NEVER UUIDs. Use [] when the section shows no image.
+  - factKeys: semantic fact keys (e.g. "name","description","price"). NEVER UUIDs.
+  - assetRoles: semantic image roles (e.g. "hero","gallery-1","detail"). NEVER UUIDs.
+  - interactionIds: reference interaction specs by short id (e.g. "gallery-1","tabs-main","cta-copy")
+  - motionId: reference motion spec by short id (e.g. "hero-entrance","scroll-story")
 - contentWidth: narrow|standard|wide|full; visualRhythm: calm|layered|punchy
 
+INTERACTION PLAN (embed in siteBlueprint sections via interactionIds):
+Supported kinds: gallery-carousel, image-zoom, tabs, accordion, product-hotspots, product-compare, image-before-after, copy-contact, anchor-navigation
+For each interaction, describe its options in the blueprint note field (e.g. "gallery-carousel with zoom, keyboard nav").
+Prioritize: gallery-carousel, tabs, accordion, anchor-navigation, copy-contact as P0.
+Only include interactions that make sense for this product's content.
+
+MOTION PLAN (embed via motionId):
+Supported kinds: entrance-reveal, stagger-text, scroll-reveal, sticky-story, parallax-light, hover-feedback, section-transition
+Use entrance-reveal for hero, scroll-reveal for content sections, stagger-text for headlines.
+Match motion intensity to the motionLanguage: calm = subtle fades, expressive = layered reveals, energetic = dynamic transitions.
+
 CRITICAL — the 2–3 directions must be visibly different pages, not recolors:
-- different hero composition
-- different section ORDER
-- different gallery/features/specs layout variants
-- different grid width, type character, density, image treatment
+- different hero composition and visual narrative
+- different section ORDER and content emphasis
+- different gallery/features/story layout variants
+- different grid style, type character, density, image treatment, visual motif
+- different interaction plans and motion rhythms
 Aim for 4+ observable structural differences. Only swapping palette colors does NOT count.
+
+VISUAL QUALITY:
+- Bold color is welcome (gradients, vivid accents) when it serves the product
+- Product images must remain the visual hero
+- Typography must have clear hierarchy (headline > subhead > body > label)
+- Every screen needs one clear focal point — not everything competing
+- Mobile layout must REORGANIZE, not just shrink
+- Avoid: default purple gradients for everything, glassmorphism overload, every section as identical cards
 
 Constraints:
 - approvedByClient must be false. factVersion must match the current facts version exactly.
