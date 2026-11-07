@@ -7,6 +7,15 @@ import * as service from '../../../lib/core/service';
 import { Id, Revision, DesignChoices, ChangeRequest } from '../../../contracts';
 import { signed, uploadAsset } from '../../../lib/core/storage';
 import { approveArtifact, previewProject } from '../../../lib/publishing/service';
+import { accountWorkspace, projectWorkspace, adminWorkspace } from '../../../lib/core/workspace';
+import { posterPreview } from '../../../lib/publishing/poster-preview';
+import { wechatAvailable } from '../../../lib/commerce/wechat-provider';
+import {
+  createWechatCheckout,
+  receiveWechatNotification,
+  reconcileWechatOrder,
+  closeWechatOrder,
+} from '../../../lib/commerce/wechat-service';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 const response = (value: unknown, status = 200) =>
@@ -55,11 +64,24 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
         addons:
           await database()`select code,name,price_minor,entitlement from service_addons where is_active`,
       });
-    // No live webhook exists until a verified provider adapter is configured. Never accept unsigned events.
+    if (route === 'commerce/payment-methods' && method === 'GET')
+      return response({ wechatNative: wechatAvailable(), manualVerified: false, sandbox: false });
+    if (route === 'commerce/payments/webhook/wechat' && method === 'POST') {
+      await receiveWechatNotification(
+        request.headers,
+        (await readBytes(request, 1024 * 1024)).toString('utf8'),
+      );
+      return new Response(null, { status: 204 });
+    }
+    // Every unsupported provider fails closed; browser JSON never counts as payment evidence.
     if (route.startsWith('commerce/payments/webhook/'))
       throw new AppError('LIVE_PROVIDER_NOT_CONFIGURED', 503);
     const actor = await authenticate(request);
     await service.rateLimit(actor);
+    if (route === 'core/admin' && method === 'GET')
+      return response(await transaction(actor, (tx) => adminWorkspace(tx, actor)));
+    if (route === 'core/account' && method === 'GET')
+      return response(await transaction(actor, (tx) => accountWorkspace(tx, actor)));
     if (
       path[0] === 'core' &&
       path[1] === 'projects' &&
@@ -115,11 +137,18 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
       );
     }
     let orgId: string | undefined;
+    let adminAction = false;
     if (method === 'POST' && ['commerce/quotes', 'commerce/orders'].includes(route))
       orgId = Id.parse((body as { orgId?: string }).orgId);
     if (path[0] === 'commerce' && path[1] === 'orders' && path[2]) {
       const id = Id.parse(path[2]);
-      const o = await transaction(actor, (tx) => service.order(tx, actor, id));
+      adminAction =
+        method === 'POST' &&
+        path.length === 4 &&
+        ['confirm-manual', 'finalize-refund'].includes(path[3]);
+      const o = await transaction(actor, (tx) =>
+        adminAction ? service.adminOrder(tx, actor, id) : service.order(tx, actor, id),
+      );
       orgId = o.org_id;
       if (method === 'GET' && path.length === 3) return response(o);
     }
@@ -134,6 +163,46 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
       orgId = p.org_id;
       if (method === 'GET') {
         if (path.length === 3) return response(p);
+        if (path[3] === 'poster-preview' && path.length === 4) {
+          const params = new URL(request.url).searchParams;
+          const bytes = await posterPreview(
+            actor,
+            id,
+            Revision.parse(Number(params.get('revision'))),
+            z
+              .number()
+              .int()
+              .min(0)
+              .max(19)
+              .parse(Number(params.get('index'))),
+          );
+          return new Response(new Uint8Array(bytes), {
+            headers: {
+              'Content-Type': 'image/png',
+              'Cache-Control': 'no-store',
+              'X-OneBoss-Draft': 'true',
+            },
+          });
+        }
+        if (path[3] === 'assets' && path.length === 4)
+          return response({
+            assets: await transaction(actor, async (tx) => {
+              await service.project(tx, actor, id);
+              const assets =
+                await tx`select id,storage_path,width,height,license_status from media_assets where project_id=${id}`;
+              return Promise.all(
+                assets.map(async (a) => ({
+                  id: a.id,
+                  width: a.width,
+                  height: a.height,
+                  license_status: a.license_status,
+                  url: await signed(a.storage_path),
+                })),
+              );
+            }),
+          });
+        if (path[3] === 'workspace' && path.length === 4)
+          return response(await transaction(actor, (tx) => projectWorkspace(tx, actor, id)));
         if (path[3] === 'preview' && path.length === 4) {
           const revision = Revision.parse(
             Number(new URL(request.url).searchParams.get('revision')),
@@ -190,6 +259,22 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
         }),
       );
     assert(method === 'POST' && orgId, 'NOT_FOUND', 404);
+    if (path[0] === 'commerce' && path[1] === 'orders' && path.length === 4) {
+      if (path[3] === 'checkout' && (body as { channel?: string }).channel === 'wechat_native') {
+        z.object({ channel: z.literal('wechat_native') })
+          .strict()
+          .parse(body);
+        return response(await createWechatCheckout(actor, path[2]));
+      }
+      if (path[3] === 'reconcile-wechat') {
+        z.object({}).strict().parse(body);
+        return response(await reconcileWechatOrder(actor, path[2]));
+      }
+      if (path[3] === 'close') {
+        z.object({}).strict().parse(body);
+        return response(await closeWechatOrder(actor, path[2]));
+      }
+    }
     // Approval includes external QA and gets its own revalidated transaction.
     if (path[0] === 'core' && path[1] === 'projects' && path[3] === 'approve-revision') {
       const { revision } = z.object({ revision: Revision }).strict().parse(body);
@@ -321,6 +406,7 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
                 await tx`select coalesce(max(revision),0)+1 revision from design_systems where project_id=${id}`;
               const value = { ...choice, version: revision, approvedByClient: true };
               await tx`insert into design_systems(org_id,project_id,revision,body,approved_at) values(${p.org_id},${id},${revision},${tx.json(value)},now())`;
+              await tx`update projects set status='READY_TO_GENERATE' where id=${id}`;
               return { approved: true, design: value };
             }
             if (action === 'generate') {
@@ -356,6 +442,7 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
           }
           throw new AppError('NOT_FOUND', 404);
         },
+        adminAction ? 'platform' : 'member',
       ),
     );
   } catch (error) {

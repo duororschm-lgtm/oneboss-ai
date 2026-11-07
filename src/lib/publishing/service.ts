@@ -6,6 +6,7 @@ import { validateProduction } from '../core/validation';
 import { creative } from '../core/creative';
 import { appOrigin, verifyPublicUrl } from '../security/network';
 import { signed } from '../core/storage';
+import { verifyPublishedBrowser } from './browser';
 export async function approveArtifact(
   actor: Actor,
   projectId: string,
@@ -80,6 +81,7 @@ export async function publishRevision(run: Record<string, any>) {
   try {
     const html = await verifyPublicUrl(previous.url, `/p/${previous.publish_slug}`);
     assert(html.includes(`data-oneboss-revision="${revision}"`), 'PUBLIC_REVISION_MISMATCH', 502);
+    const browserEvidence = await verifyPublishedBrowser(previous.publish_slug, revision);
     await database().begin(async (tx) => {
       const [p] = await tx`select * from projects where id=${run.project_id} for update`;
       await entitlement(tx, p);
@@ -93,10 +95,10 @@ export async function publishRevision(run: Record<string, any>) {
         'PUBLICATION_CONFLICT',
         409,
       );
-      await tx`update projects set published_verified=true where id=${p.id}`;
+      await tx`update projects set published_verified=true,browser_verified_revision=${revision},status='PUBLISHED' where id=${p.id}`;
       await tx`update artifact_versions set status='PUBLISHED' where project_id=${p.id} and revision=${revision}`;
     });
-    return { publicUrl: previous.url, revision, verified: true };
+    return { publicUrl: previous.url, revision, verified: true, browserEvidence };
   } catch (error) {
     await database()`update projects set published_revision=${previous.published_revision},published_verified=${previous.published_verified} where id=${run.project_id} and published_revision=${revision} and publication_token=${run.lease_token}`;
     throw error;

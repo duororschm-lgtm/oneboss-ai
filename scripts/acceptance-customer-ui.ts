@@ -1,0 +1,314 @@
+import assert from 'node:assert/strict';
+import { randomUUID, randomBytes } from 'node:crypto';
+import { spawn, type ChildProcess } from 'node:child_process';
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:net';
+import { once } from 'node:events';
+import postgres from 'postgres';
+import { createClient } from '@supabase/supabase-js';
+import { chromium, type Browser } from 'playwright-core';
+import { outboundFetch } from '../src/lib/security/http';
+import { fixture } from '../tests/fixtures';
+
+// Real customer browser/Auth/API on an EMPTY local database. Production artifacts are explicitly
+// test fixtures, not a model or publication proof. No real order, payment or hosted business write.
+const target = new URL(process.env.TEST_DATABASE_URL || '');
+assert(
+  ['127.0.0.1', 'localhost'].includes(target.hostname) &&
+    /^\/oneboss_acceptance_[a-z0-9_]+$/.test(target.pathname),
+  'LOCAL_EMPTY_ACCEPTANCE_DB_REQUIRED',
+);
+const db = postgres(target.href, { ssl: false, onnotice: () => {} });
+const admin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { global: { fetch: outboundFetch }, auth: { persistSession: false, autoRefreshToken: false } },
+);
+let userId: string | undefined, server: ChildProcess | undefined, browser: Browser | undefined;
+let passed = false,
+  removed = false,
+  phase = 'database';
+const artifacts = '.cache/customer-ui';
+await mkdir(artifacts, { recursive: true });
+try {
+  const [existing] = await db`select count(*)::int n from pg_tables where schemaname='public'`;
+  assert.equal(existing.n, 0, 'EMPTY_DATABASE_REQUIRED');
+  await db.unsafe(
+    "create schema auth; do $$ begin if not exists(select 1 from pg_roles where rolname='anon') then create role anon nologin; end if; if not exists(select 1 from pg_roles where rolname='authenticated') then create role authenticated nologin; end if; end $$; create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$; grant usage on schema auth to anon,authenticated; grant execute on function auth.uid() to authenticated;",
+  );
+  const reserved = await db.reserve();
+  try {
+    await reserved.unsafe(await readFile('docs/setup-supabase.sql', 'utf8'));
+  } finally {
+    reserved.release();
+  }
+  const email = `oneboss-ui-${randomUUID()}@example.com`,
+    password = randomBytes(28).toString('base64url');
+  const created = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { purpose: 'temporary-customer-ui-acceptance' },
+  });
+  assert(!created.error && created.data.user, 'AUTH_CREATE_FAILED');
+  userId = created.data.user.id;
+  const reservation = createServer();
+  reservation.listen(0, '127.0.0.1');
+  await once(reservation, 'listening');
+  const address = reservation.address();
+  assert(address && typeof address !== 'string');
+  const port = address.port;
+  await new Promise<void>((r) => reservation.close(() => r()));
+  const origin = `http://127.0.0.1:${port}`;
+  server = spawn(
+    process.execPath,
+    ['node_modules/next/dist/bin/next', 'start', '--hostname', '127.0.0.1', '--port', String(port)],
+    {
+      windowsHide: true,
+      stdio: 'ignore',
+      env: {
+        ...process.env,
+        DATABASE_URL: target.href,
+        DATABASE_PASSWORD: '',
+        APP_URL: 'https://oneboss.example',
+        CREATIVE_ADAPTER_MODULE: 'builtin:b',
+      },
+    },
+  );
+  for (let n = 0; n < 60; n++) {
+    try {
+      if ((await fetch(origin)).ok) break;
+    } catch {}
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  browser = await chromium.launch({
+    ...(process.platform === 'win32' ? { channel: 'msedge' } : {}),
+    ...(process.env.HTTPS_PROXY
+      ? { proxy: { server: process.env.HTTPS_PROXY, bypass: '127.0.0.1,localhost' } }
+      : {}),
+  });
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } }),
+    page = await context.newPage();
+  const errors: string[] = [];
+  page.setDefaultTimeout(20000);
+  page.setDefaultNavigationTimeout(30000);
+  page.on('pageerror', (e) => errors.push(e.name));
+  page.on('console', (message) => {
+    if (message.type() === 'warning' && message.text().startsWith('{"authError"'))
+      console.log(message.text());
+  });
+  page.on('response', async (response) => {
+    if (response.url().includes('/auth/v1/token') && response.status() >= 400) {
+      const value = await response.json().catch(() => ({}));
+      console.log(
+        JSON.stringify({
+          authHttpStatus: response.status(),
+          authErrorCode: value.error_code || value.code || value.error,
+        }),
+      );
+    }
+  });
+  page.on('requestfailed', (request) => {
+    if (request.url().includes('/auth/v1/'))
+      console.log(JSON.stringify({ authNetworkError: request.failure()?.errorText }));
+  });
+  phase = 'marketing';
+  for (const width of [375, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(origin);
+    await page.getByRole('heading', { level: 1 }).waitFor();
+    assert(
+      !(await page.locator('body').evaluate((e) => e.scrollWidth > window.innerWidth + 1)),
+      'HOME_OVERFLOW',
+    );
+    await page.screenshot({ path: `${artifacts}/home-${width}.png`, fullPage: true });
+  }
+  phase = 'real-browser-login';
+  await page.goto(`${origin}/examples`);
+  await page
+    .frameLocator('iframe[title="交互作品演示"]')
+    .locator('.site.style-editorial-minimal')
+    .waitFor();
+  await page.getByRole('button', { name: '未来科技', exact: true }).click();
+  await page
+    .frameLocator('iframe[title="交互作品演示"]')
+    .locator('.site.style-future-tech')
+    .waitFor();
+  await page.getByRole('button', { name: '切换手机视口', exact: true }).click();
+  assert(
+    !(await page
+      .frameLocator('iframe[title="交互作品演示"]')
+      .locator('body')
+      .evaluate((e) => e.scrollWidth > window.innerWidth + 1)),
+    'EXAMPLE_MOBILE_OVERFLOW',
+  );
+  await page.goto(`${origin}/login`);
+  await page.getByRole('button', { name: '还没有账户？注册', exact: true }).click();
+  assert(
+    await page.getByRole('button', { name: '创建账户', exact: true }).isDisabled(),
+    'UNCONFIGURED_EMAIL_SIGNUP_MUST_NOT_PROMISE_DELIVERY',
+  );
+  await page.getByRole('button', { name: '已有账户？登录', exact: true }).click();
+  await page.getByLabel('邮箱', { exact: true }).fill(email);
+  await page.getByLabel('密码', { exact: true }).fill(password);
+  await page.getByRole('button', { name: '登录并继续', exact: true }).click();
+  phase = 'login-navigation';
+  await page.waitForURL('**/dashboard');
+  phase = 'account-workspace';
+  await page.getByRole('heading', { name: '让下一个作品，开始发生。', exact: true }).waitFor();
+  phase = 'order-creation';
+  await page.goto(`${origin}/checkout?plan=basic`);
+  await page.getByLabel('增加海报（测试价格） 数量', { exact: true }).fill('1');
+  await page.getByRole('checkbox').check();
+  await page.getByRole('button', { name: '创建服务订单 →', exact: true }).click();
+  await page.waitForURL('**/dashboard/orders/*');
+  await page.getByRole('heading', { name: '订单详情', exact: true }).waitFor();
+  await page
+    .getByText('在线商户支付尚未开通，此订单未扣费。开通后可继续付款。', { exact: true })
+    .waitFor();
+  await page.reload();
+  await page.getByRole('heading', { name: '订单详情', exact: true }).waitFor();
+  const [order] =
+    await db`select * from service_orders where org_id in(select id from organizations where owner_user_id=${userId})`;
+  assert(order && order.pay_state === 'UNPAID', 'REAL_UNPAID_ORDER_REQUIRED');
+  assert.equal(order.amount_minor, 29800, 'SERVER_ADDON_TOTAL');
+  assert.equal(order.plan_snapshot.poster_count, 3, 'SERVER_ADDON_ENTITLEMENT');
+  // Isolated DB fixture entitlement, explicitly changed to demo; never impersonates live payment.
+  await db`update service_orders set is_demo=true,pay_state='PAID' where id=${order.id}`;
+  await db`insert into project_entitlements(order_id,org_id,remaining_revisions,max_products,max_posters,is_demo,expires_at) values(${order.id},${order.org_id},2,1,1,true,now()+interval '1 day')`;
+  await page.reload();
+  await page.getByRole('button', { name: '进入制作项目 →', exact: true }).click();
+  await page.waitForURL('**/projects/*/intake');
+  phase = 'intake-and-approval';
+  await page.getByLabel('产品名称', { exact: true }).fill('浏览器验收椅子');
+  await page.getByLabel('产品介绍', { exact: true }).fill('隔离测试产品，不是真实销售。');
+  await page
+    .getByLabel('这次宣传想达到什么目的？', { exact: true })
+    .fill('制作清晰标识的验收作品。');
+  await page.getByRole('checkbox', { name: '我已核对以上产品事实', exact: false }).check();
+  await page.getByRole('button', { name: '保存已确认事实', exact: true }).click();
+  await page.getByRole('button', { name: '批准已保存的需求摘要 →', exact: true }).waitFor();
+  await page.getByRole('button', { name: '批准已保存的需求摘要 →', exact: true }).click();
+  await page.getByText('需求摘要已批准', { exact: true }).waitFor();
+  const [project] = await db`select * from projects where service_order_id=${order.id}`;
+  assert(project);
+  const [brief] = await db`select * from creative_briefs where project_id=${project.id}`;
+  assert(brief.approved_at, 'UI_APPROVAL_NOT_PERSISTED');
+  const [fact] =
+    await db`select id,product_id from product_facts where project_id=${project.id} and key='name'`;
+  const f = fixture();
+  const design = { ...f.design, styleId: 'editorial-minimal', approvedByClient: false };
+  await db`insert into agent_runs(org_id,project_id,role,status,input,output,completed_at) values(${order.org_id},${project.id},'design','SUCCEEDED',${db.json({ factVersion: 1 })},${db.json({ choices: [design, { ...design, styleId: 'future-tech', layoutMode: 'future-grid', rationale: '几何布局' }] })},now())`;
+  phase = 'direction-and-real-preview';
+  await page.getByRole('link', { name: '创意方向', exact: true }).click();
+  await page.getByRole('button', { name: '选择并批准此方向', exact: true }).first().click();
+  await page.getByText('已批准方向：editorial-minimal', { exact: false }).waitFor();
+  const production = structuredClone(f.production);
+  production.site.projectId = project.id;
+  production.site.pages[0].sections[0].factRefs = [fact.id];
+  production.site.pages[0].sections.push({
+    type: 'specs',
+    props: {},
+    factRefs: [fact.id],
+    assetRefs: [],
+  });
+  production.site.allowedSectionTypes.push('specs');
+  production.site.interactions = ['tabs'];
+  for (const p of production.posters) {
+    p.projectId = project.id;
+    p.layers[0].factRef = fact.id;
+    p.productFactRefs = [fact.id];
+    p.textRefs = [fact.id];
+  }
+  production.copy.forEach((c) => {
+    c.factRefs = [fact.id];
+  });
+  await db`insert into artifact_versions(org_id,project_id,revision,fact_version,body) values(${order.org_id},${project.id},1,1,${db.json(production)})`;
+  await page.getByRole('link', { name: '作品预览', exact: true }).click();
+  await page.frameLocator('iframe[title="私有网站预览"]').locator('.site').waitFor();
+  const tab = page
+    .frameLocator('iframe[title="私有网站预览"]')
+    .locator('[data-oneboss-interaction]')
+    .first();
+  await tab.click();
+  await page.getByRole('button', { name: '查看海报草稿', exact: true }).click();
+  await page.getByRole('img', { name: '海报草稿 1', exact: true }).waitFor();
+  assert(
+    await page
+      .getByRole('img', { name: '海报草稿 1', exact: true })
+      .evaluate((img) => (img as HTMLImageElement).naturalWidth === 1080),
+    'DRAFT_PNG_NOT_RENDERED',
+  );
+  await page.getByRole('button', { name: '手机', exact: true }).click();
+  assert(
+    !(await page
+      .frameLocator('iframe[title="私有网站预览"]')
+      .locator('body')
+      .evaluate((e) => e.scrollWidth > window.innerWidth + 1)),
+    'PRIVATE_MOBILE_OVERFLOW',
+  );
+  for (const width of [375, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert(
+      !(await page.locator('body').evaluate((e) => e.scrollWidth > window.innerWidth + 1)),
+      'STUDIO_OVERFLOW',
+    );
+    await page.screenshot({ path: `${artifacts}/studio-${width}.png`, fullPage: true });
+  }
+  await page.getByRole('button', { name: '批准版本 1', exact: true }).click();
+  await page.getByRole('button', { name: '发布批准版本 →', exact: true }).waitFor();
+  const [version] =
+    await db`select status,approved_by from artifact_versions where project_id=${project.id}`;
+  assert.equal(version.status, 'APPROVED');
+  assert.equal(version.approved_by, userId);
+  await page.getByRole('link', { name: '任务记录', exact: true }).click();
+  await page.getByRole('heading', { name: '真实任务记录', exact: true }).waitFor();
+  assert.deepEqual(errors, [], 'BROWSER_ERRORS');
+  phase = 'signout';
+  await page.getByRole('button', { name: '退出', exact: true }).click();
+  await page.getByRole('link', { name: '登录并继续 →', exact: true }).waitFor();
+  passed = true;
+} catch (e) {
+  if (browser) {
+    const page = browser.contexts()[0]?.pages()[0];
+    if (page) {
+      await page.screenshot({ path: `${artifacts}/failure.png`, fullPage: true }).catch(() => {});
+      console.log(
+        JSON.stringify({
+          visibleError: await page
+            .getByRole('alert')
+            .allTextContents()
+            .catch(() => []),
+          pagePath: new URL(page.url()).pathname,
+        }),
+      );
+    }
+  }
+  console.error(
+    JSON.stringify({
+      phase,
+      errorClass:
+        e instanceof assert.AssertionError
+          ? e.message.slice(0, 180)
+          : e instanceof Error
+            ? e.name
+            : 'UNKNOWN',
+    }),
+  );
+  process.exitCode = 1;
+} finally {
+  await browser?.close();
+  server?.kill();
+  if (userId) removed = !(await admin.auth.admin.deleteUser(userId)).error;
+  await db.end({ timeout: 5 });
+  const result = {
+    passed: passed && removed,
+    temporaryAuthUserRemoved: removed,
+    businessWrites: 'local empty database only',
+    generation: 'explicit fixture; no model/publication proof',
+    realPayment: false,
+  };
+  await writeFile(`${artifacts}/result.json`, JSON.stringify(result, null, 2));
+  console.log(JSON.stringify(result));
+  if (!result.passed) process.exitCode = 1;
+}

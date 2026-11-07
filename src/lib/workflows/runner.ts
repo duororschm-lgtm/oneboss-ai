@@ -44,7 +44,7 @@ async function snapshot(run: Record<string, any>) {
       p,
       e,
       facts: fs.filter((x) => x.verified),
-      assets,
+      assets: assets.filter((asset) => latestBrief?.body.assetRefs.includes(asset.id)),
       brief: brief?.body,
       design: currentDesign?.body,
     };
@@ -68,9 +68,16 @@ export async function runOne() {
       assert(context.brief, 'BRIEF_APPROVAL_REQUIRED');
       const result = await callMimo(DesignChoices, 'creative director', {
         ...context,
-        task: 'Generate 2–3 substantially different design directions. approvedByClient must be false.',
+        task: 'Generate 2–3 substantially different design directions. Use distinct supported styleId values: editorial-minimal, future-tech, young-vibrant. Each choice must use a different layoutMode from editorial, split, centered, staggered, with different composition and product-specific rationale, not only swapped colors. Palette keys: background,surface,text,muted,accent,accentText,border. Typography keys display,body,mono. approvedByClient must be false; factVersion must match current facts.',
       });
       usage = result.usage;
+      assert(
+        new Set(result.output.choices.map((c) => c.styleId)).size ===
+          result.output.choices.length &&
+          new Set(result.output.choices.map((c) => c.layoutMode)).size ===
+            result.output.choices.length,
+        'DUPLICATE_DESIGN_DIRECTION',
+      );
       assert(
         result.output.choices.every(
           (x) => !x.approvedByClient && x.factVersion === context.p.fact_version,

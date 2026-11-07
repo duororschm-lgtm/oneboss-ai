@@ -7,9 +7,10 @@ SELECT pg_advisory_xact_lock(601106);
 DO $oneboss_bootstrap$
 BEGIN
   IF to_regclass('public.oneboss_migrations') IS NOT NULL THEN
-    IF (SELECT count(*) FROM public.oneboss_migrations) = 2
+    IF (SELECT count(*) FROM public.oneboss_migrations) = 3
       AND (SELECT count(*) FROM public.oneboss_migrations WHERE (name,hash) IN (('202611060001_core.sql', 'a5f7aa3f082199eff29f34dfbc9b57b5a7076fc8521796bb22b85d194b25022b'),
-('202611060002_storage.sql', '25b1e899076bc41ac08ffa69a93889f69bc74543de71ddafe33369e065bfaf4d'))) = 2
+('202611060002_storage.sql', '25b1e899076bc41ac08ffa69a93889f69bc74543de71ddafe33369e065bfaf4d'),
+('202611070001_wechat_pay.sql', '2226c42a85f681abe10f73b8df62431cd9fa383d51757afb04634a547355c638'))) = 3
       AND to_regclass('public.organizations') IS NOT NULL
       AND to_regclass('public.deliveries') IS NOT NULL THEN
       RAISE NOTICE 'OneBoss migrations already applied; existing data retained';
@@ -97,6 +98,32 @@ do $$ begin
  end if;
 end $$;
 
+
+-- Migration: 202611070001_wechat_pay.sql; sha256: 2226c42a85f681abe10f73b8df62431cd9fa383d51757afb04634a547355c638
+-- Additive APIv3 Native payment state; existing sandbox/manual records retain their semantics.
+alter table service_orders add column checkout_blocked boolean not null default false;
+alter table payment_attempts drop constraint payment_attempts_provider_check;
+alter table payment_attempts add constraint payment_attempts_provider_check check(provider in ('sandbox','manual_verified','wechat_native'));
+alter table payment_events alter column verified_by drop not null;
+alter table payment_events add column verification_method text not null default 'actor' check(verification_method in ('actor','provider_signature'));
+create table wechat_payments(
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references organizations(id),
+  order_id uuid not null references service_orders(id),
+  attempt_id uuid not null unique references payment_attempts(id),
+  out_trade_no text not null unique check(out_trade_no ~ '^[a-f0-9]{32}$'),
+  state text not null default 'PENDING' check(state in ('PENDING','SUCCESS','CLOSED')),
+  code_url text,
+  expires_at timestamptz not null,
+  transaction_id text unique,
+  created_at timestamptz not null default now()
+);
+create unique index one_pending_wechat_payment on wechat_payments(order_id) where state='PENDING';
+alter table wechat_payments enable row level security;
+revoke all on wechat_payments from anon,authenticated;
+-- Only trusted server handlers can create or reconcile sessions. Account API returns safe fields.
+create index wechat_payments_order on wechat_payments(order_id);
+
   CREATE TABLE public.oneboss_migrations (
     name text PRIMARY KEY, hash text NOT NULL,
     applied_at timestamptz NOT NULL DEFAULT now()
@@ -104,7 +131,8 @@ end $$;
   ALTER TABLE public.oneboss_migrations ENABLE ROW LEVEL SECURITY;
   REVOKE ALL ON public.oneboss_migrations FROM anon, authenticated;
   INSERT INTO public.oneboss_migrations(name,hash) VALUES ('202611060001_core.sql', 'a5f7aa3f082199eff29f34dfbc9b57b5a7076fc8521796bb22b85d194b25022b'),
-('202611060002_storage.sql', '25b1e899076bc41ac08ffa69a93889f69bc74543de71ddafe33369e065bfaf4d');
+('202611060002_storage.sql', '25b1e899076bc41ac08ffa69a93889f69bc74543de71ddafe33369e065bfaf4d'),
+('202611070001_wechat_pay.sql', '2226c42a85f681abe10f73b8df62431cd9fa383d51757afb04634a547355c638');
 END
 $oneboss_bootstrap$;
 NOTIFY pgrst, 'reload schema';

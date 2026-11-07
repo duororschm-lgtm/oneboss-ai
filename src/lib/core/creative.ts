@@ -5,6 +5,7 @@ import type { z } from 'zod';
 import { DesignSystem, Production, SiteSpec, PosterSpec } from '../../contracts';
 import { AppError } from './errors';
 export interface CreativeAdapter {
+  renderPosterPreview?(input: Parameters<CreativeAdapter['renderPoster']>[0]): Promise<Uint8Array>;
   renderSite(input: {
     pageSlug?: string;
     site: z.infer<typeof SiteSpec>;

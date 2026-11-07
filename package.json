@@ -22,7 +22,9 @@
     "acceptance:a": "tsx --env-file-if-exists=.env.local scripts/acceptance-a.ts",
     "acceptance:b": "tsx --env-file-if-exists=.env.local scripts/acceptance-b.ts",
     "acceptance:hosted": "tsx --env-file-if-exists=.env.local scripts/acceptance-hosted.ts",
-    "acceptance:hosted:write": "tsx --env-file-if-exists=.env.local scripts/acceptance-hosted-write.ts"
+    "acceptance:hosted:write": "tsx --env-file-if-exists=.env.local scripts/acceptance-hosted-write.ts",
+    "acceptance:customer:ui": "tsx --env-file-if-exists=.env.local scripts/acceptance-customer-ui.ts",
+    "check:wechat": "tsx --env-file-if-exists=.env.local scripts/check-wechat.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.0.0",
@@ -31,6 +33,7 @@
     "jszip": "^3.10.1",
     "lucide-react": "0.468.0",
     "next": "16.4.5",
+    "playwright-core": "1.65.0",
     "postcss": "^8.5.32",
     "postgres": "^3.4.7",
     "qrcode": "1.5.4",

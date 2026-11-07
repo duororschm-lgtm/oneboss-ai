@@ -14,5 +14,6 @@ playwright-report
 attachments
 .local
 .cache
+.secrets
 .planning
 scratch

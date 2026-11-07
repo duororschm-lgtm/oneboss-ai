@@ -3,7 +3,14 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import sharp from 'sharp';
 import { fixture } from '../fixtures';
 import { mapSite, mapPoster, displayFact } from '../../src/lib/creative/b-mapping';
-import { renderSite, renderPoster, validateProduction } from '../../src/lib/creative/b-adapter';
+import {
+  renderSite,
+  renderPoster,
+  renderPosterPreview,
+  validateProduction,
+} from '../../src/lib/creative/b-adapter';
+import jsQR from 'jsqr';
+import { directionPreview } from '../../src/lib/customer/direction-preview';
 import { inspectPng } from '../../src/lib/delivery/service';
 import * as storage from '../../src/lib/core/storage';
 
@@ -25,6 +32,26 @@ function input() {
     },
   };
 }
+it('renders a real private PNG draft with its QR removed until publication', async () => {
+  vi.stubEnv('APP_URL', 'https://oneboss.example');
+  const f = input(),
+    png = await renderPosterPreview(f.posterInput);
+  const image = sharp(png),
+    meta = await image.metadata();
+  expect(meta.width).toBe(1080);
+  expect(meta.height).toBe(1350);
+  const { data, info } = await image.ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  expect(jsQR(new Uint8ClampedArray(data), info.width, info.height)).toBeNull();
+  expect((await image.stats()).channels.some((c) => c.stdev > 5)).toBe(true);
+});
+it('previews an unapproved direction without inventing approval or weakening the final renderer', () => {
+  const f = input(),
+    design = { ...f.design, approvedByClient: false };
+  const mapped = directionPreview(f.projectId, 1, design, [f.fact]);
+  expect(mapped.design.approvedByClient).toBe(false);
+  expect(design.approvedByClient).toBe(false);
+  expect(() => mapSite({ ...f.siteInput, design })).toThrow('DESIGN_VERSION_MISMATCH');
+});
 it('reuses B React rendering with approved references, information tabs and one outer main', async () => {
   const f = input();
   const html = renderToStaticMarkup(await renderSite(f.siteInput));

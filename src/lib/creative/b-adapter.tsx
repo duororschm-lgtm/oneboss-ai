@@ -53,7 +53,10 @@ function checkText(mapped: ReturnType<typeof mapPoster>) {
   );
   assert(mapped.warnings.length === 0, 'POSTER_LAYOUT_CONFLICT');
 }
-export const renderPoster: CreativeAdapter['renderPoster'] = async (input) => {
+async function renderPosterBytes(
+  input: Parameters<CreativeAdapter['renderPoster']>[0],
+  draft = false,
+) {
   const url = new URL(input.publicSiteUrl);
   assert(
     url.origin === appOrigin() && url.pathname.startsWith('/p/') && !url.search && !url.hash,
@@ -91,15 +94,30 @@ export const renderPoster: CreativeAdapter['renderPoster'] = async (input) => {
       { input: bytes, left: Math.round(region.x), top: Math.round(region.y) },
     ]);
   }
+  let pngBytes = await image.png().toBuffer();
+  if (draft) {
+    const card = posterGeometry(mapped.spec.layout, mapped.spec.canvas.height).qrCandidates[
+      mapped.spec.qr.placement
+    ];
+    const overlay = `<svg width="1080" height="${mapped.spec.canvas.height}" xmlns="http://www.w3.org/2000/svg"><rect x="${card.x - 3}" y="${card.y - 3}" width="${card.width + 6}" height="${card.height + 6}" fill="#f1eee5"/><text x="${card.x + card.width / 2}" y="${card.y + card.height / 2}" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#555">二维码将在发布后生成</text><rect width="1080" height="42" fill="#222"/><text x="540" y="29" text-anchor="middle" font-family="sans-serif" font-size="22" fill="white">草稿预览 · 尚未发布 · 非正式交付文件</text></svg>`;
+    pngBytes = await sharp(pngBytes)
+      .composite([{ input: Buffer.from(overlay) }])
+      .png()
+      .toBuffer();
+  }
   return {
-    pngBytes: await image.png().toBuffer(),
+    pngBytes,
     qrBytes: await QRCode.toBuffer(input.publicSiteUrl, {
       width: 800,
       margin: 4,
       errorCorrectionLevel: 'H',
     }),
   };
-};
+}
+export const renderPoster: CreativeAdapter['renderPoster'] = (input) => renderPosterBytes(input);
+export const renderPosterPreview: NonNullable<CreativeAdapter['renderPosterPreview']> = async (
+  input,
+) => (await renderPosterBytes(input, true)).pngBytes;
 export const validateProduction: CreativeAdapter['validateProduction'] = async (input) => {
   try {
     assert(input.design, 'DESIGN_APPROVAL_REQUIRED');

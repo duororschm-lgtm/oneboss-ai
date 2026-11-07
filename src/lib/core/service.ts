@@ -45,10 +45,12 @@ export async function idempotent(
   body: unknown,
   orgId: string,
   fn: (tx: Tx) => Promise<unknown>,
+  access: 'member' | 'platform' = 'member',
 ) {
   assert(/^[a-zA-Z0-9_-]{8,100}$/.test(key), 'IDEMPOTENCY_KEY_REQUIRED');
   return transaction(actor, async (tx) => {
-    await member(tx, actor, orgId);
+    if (access === 'platform') await platformAdmin(tx, actor);
+    else await member(tx, actor, orgId);
     // Serialize across requests/processes before reading the cached response.
     await tx`select pg_advisory_xact_lock(hashtextextended(${actor.userId + ':' + key},0))`;
     const digest = hash(JSON.stringify(body));
@@ -150,6 +152,12 @@ export async function order(tx: Tx, actor: Actor, id: string) {
   await member(tx, actor, o.org_id);
   return o;
 }
+export async function adminOrder(tx: Tx, actor: Actor, id: string) {
+  await platformAdmin(tx, actor);
+  const [o] = await tx`select * from service_orders where id=${Id.parse(id)} for update`;
+  assert(o, 'NOT_FOUND', 404);
+  return o;
+}
 export async function checkout(tx: Tx, actor: Actor, id: string, channel: string) {
   const o = await order(tx, actor, id);
   assert(['UNPAID', 'PENDING_CONFIRMATION'].includes(o.pay_state), 'ORDER_NOT_PAYABLE', 409);
@@ -188,9 +196,10 @@ export async function confirmPayment(
   input: z.infer<typeof Confirmation>,
   channel: 'sandbox' | 'manual_verified',
 ) {
-  const o = await order(tx, actor, id);
-  if (channel === 'manual_verified') await platformAdmin(tx, actor);
-  else assert(o.is_demo && process.env.ALLOW_SANDBOX === 'true', 'SANDBOX_DISABLED', 403);
+  const o =
+    channel === 'manual_verified' ? await adminOrder(tx, actor, id) : await order(tx, actor, id);
+  if (channel !== 'manual_verified')
+    assert(o.is_demo && process.env.ALLOW_SANDBOX === 'true', 'SANDBOX_DISABLED', 403);
   assert(channel !== 'manual_verified' || !o.is_demo, 'DEMO_REQUIRES_SANDBOX');
   assert(
     input.amountMinor === o.amount_minor && input.currency === o.currency,
@@ -249,8 +258,7 @@ export async function finalizeRefund(
   reference: string,
   confirmed: boolean,
 ) {
-  const o = await order(tx, actor, id);
-  await platformAdmin(tx, actor);
+  const o = await adminOrder(tx, actor, id);
   const [r] =
     await tx`select * from refunds where id=${Id.parse(refundId)} and order_id=${o.id} for update`;
   assert(r && r.status === 'REQUESTED', 'REFUND_NOT_PENDING', 409);

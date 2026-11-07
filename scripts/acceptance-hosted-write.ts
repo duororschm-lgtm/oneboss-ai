@@ -347,6 +347,7 @@ try {
             'project_entitlements',
             'projects',
             'payment_events',
+            'wechat_payments',
             'payment_attempts',
             'refunds',
             'service_order_items',

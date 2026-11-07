@@ -1,6 +1,6 @@
 import { beforeAll, afterAll, describe, it, expect, vi } from 'vitest';
-import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { randomUUID, generateKeyPairSync } from 'node:crypto';
+import { readFile, readdir } from 'node:fs/promises';
 import { database, closeDatabase, transaction } from '../../src/lib/core/db';
 import * as core from '../../src/lib/core/service';
 import { claimRun, runOne } from '../../src/lib/workflows/runner';
@@ -17,6 +17,16 @@ import sharp from 'sharp';
 import * as adapters from '../../src/lib/core/creative';
 import { createDelivery } from '../../src/lib/delivery/service';
 import { previewProject } from '../../src/lib/publishing/service';
+import { accountWorkspace, projectWorkspace } from '../../src/lib/core/workspace';
+import { adminWorkspace } from '../../src/lib/core/workspace';
+import * as browserQA from '../../src/lib/publishing/browser';
+import * as wxProvider from '../../src/lib/commerce/wechat-provider';
+import {
+  createWechatCheckout,
+  applyWechatTransaction,
+  closeWechatOrder,
+  reconcileWechatOrder,
+} from '../../src/lib/commerce/wechat-service';
 const url = process.env.TEST_DATABASE_URL;
 if (!url)
   throw new Error(
@@ -72,7 +82,9 @@ describe.sequential('real PostgreSQL business invariants', () => {
     const [plan] = await db`select price_minor from service_plans where code='basic'`;
     expect(plan.price_minor).toBe(29900);
     const history = await db`select name,hash from oneboss_migrations order by name`;
-    expect(history).toHaveLength(2);
+    expect(history.map((m) => m.name).sort()).toEqual(
+      (await readdir('supabase/migrations')).filter((n) => n.endsWith('.sql')).sort(),
+    );
     for (const migration of history) {
       const { createHash } = await import('node:crypto');
       expect(migration.hash).toBe(
@@ -355,6 +367,47 @@ describe.sequential('real PostgreSQL business invariants', () => {
       mock.mockRestore();
     }
   });
+  it('requires genuinely different direction layouts and retains usage for rejected proposals', async () => {
+    const design = { ...fixture().design, factVersion: 2, approvedByClient: false };
+    const model = vi.spyOn(gateway, 'callMimo').mockResolvedValue({
+      output: {
+        choices: [
+          { ...design, styleId: 'editorial-minimal', layoutMode: 'editorial' },
+          { ...design, styleId: 'future-tech', layoutMode: 'editorial' },
+        ],
+      },
+      usage: { total_tokens: 14 },
+    });
+    try {
+      const rejected = await transaction(owner, (tx) =>
+        core.enqueue(tx, owner, projectId, 'design', {}),
+      );
+      await db`update agent_runs set max_attempts=1 where id=${rejected.id}`;
+      await runOne();
+      const [r] = await db`select status,error_class,usage from agent_runs where id=${rejected.id}`;
+      expect(r.status).toBe('FAILED');
+      expect(r.error_class).toBe('DUPLICATE_DESIGN_DIRECTION');
+      expect(r.usage.total_tokens).toBe(14);
+      model.mockResolvedValue({
+        output: {
+          choices: [
+            { ...design, styleId: 'editorial-minimal', layoutMode: 'editorial' },
+            { ...design, styleId: 'future-tech', layoutMode: 'split' },
+          ],
+        },
+        usage: { total_tokens: 15 },
+      });
+      const accepted = await transaction(owner, (tx) =>
+        core.enqueue(tx, owner, projectId, 'design', {}),
+      );
+      await runOne();
+      expect((await db`select status from agent_runs where id=${accepted.id}`)[0].status).toBe(
+        'SUCCEEDED',
+      );
+    } finally {
+      model.mockRestore();
+    }
+  });
   it('previews only the tenant current fact snapshot without publishing or exposing private paths', async () => {
     const signer = vi.spyOn(files, 'signed');
     try {
@@ -624,6 +677,218 @@ describe.sequential('real PostgreSQL business invariants', () => {
       await db`update projects set browser_verified_revision=1 where id=${projectId}`;
       // The minimal download fixture has no factVersion and cannot be accepted.
       expect((await (await accept()).json()).error.code).toBe('DELIVERY_NOT_READY');
+    } finally {
+      identity.mockRestore();
+    }
+  });
+  it('serves only accessible account and project workspace data, including after reload', async () => {
+    const empty = await transaction(stranger, (tx) => accountWorkspace(tx, stranger));
+    expect(empty).toEqual({ isAdmin: false, organizations: [], orders: [], projects: [] });
+    const account = await transaction(owner, (tx) => accountWorkspace(tx, owner));
+    expect(account.organizations.some((o) => o.id === orgId)).toBe(true);
+    expect(account.orders.some((o) => o.id === orderId)).toBe(true);
+    expect(account.projects.some((p) => p.id === projectId)).toBe(true);
+    const workspace = await transaction(owner, (tx) => projectWorkspace(tx, owner, projectId));
+    expect(workspace.project.id).toBe(projectId);
+    expect(workspace.facts.every((f) => f.version === workspace.project.fact_version)).toBe(true);
+    expect(workspace.assets.every((a) => !('storage_path' in a))).toBe(true);
+    await expect(
+      transaction(stranger, (tx) => projectWorkspace(tx, stranger, projectId)),
+    ).rejects.toThrow('FORBIDDEN');
+    const identity = vi.spyOn(auth, 'authenticate').mockResolvedValue(stranger);
+    try {
+      const response = await GET(
+        new Request(`http://localhost/api/core/projects/${projectId}/workspace`),
+        { params: Promise.resolve({ path: ['core', 'projects', projectId, 'workspace'] }) },
+      );
+      expect(response.status).toBe(403);
+      identity.mockResolvedValue(owner);
+      const allowed = await GET(new Request('http://localhost/api/core/account'), {
+        params: Promise.resolve({ path: ['core', 'account'] }),
+      });
+      expect(allowed.status).toBe(200);
+      expect((await allowed.json()).orders.some((o: any) => o.id === orderId)).toBe(true);
+    } finally {
+      identity.mockRestore();
+    }
+  });
+  it('rolls back when browser QA fails and records successful publication browser evidence', async () => {
+    const oldOrigin = process.env.APP_URL;
+    process.env.APP_URL = 'https://oneboss.example';
+    await db`update projects set published_revision=null,published_verified=false,browser_verified_revision=null where id=${projectId}`;
+    const http = vi
+      .spyOn(network, 'verifyPublicUrl')
+      .mockResolvedValue('data-oneboss-revision="1"');
+    const browser = vi
+      .spyOn(browserQA, 'verifyPublishedBrowser')
+      .mockRejectedValue(new AppError('BROWSER_ERRORS', 502));
+    try {
+      const failed = await transaction(owner, (tx) =>
+        core.enqueue(tx, owner, projectId, 'publish', { revision: 1 }),
+      );
+      await runOne();
+      const [p] =
+        await db`select published_revision,published_verified,browser_verified_revision from projects where id=${projectId}`;
+      expect(p).toMatchObject({
+        published_revision: null,
+        published_verified: false,
+        browser_verified_revision: null,
+      });
+      await db`update agent_runs set status='FAILED' where id=${failed.id}`;
+      const evidence = [375, 768, 1280].map((width) => ({
+        width,
+        revision: 1,
+        passed: true as const,
+      }));
+      browser.mockResolvedValue(evidence);
+      const success = await transaction(owner, (tx) =>
+        core.enqueue(tx, owner, projectId, 'publish', { revision: 1 }),
+      );
+      await runOne();
+      const [done] = await db`select status,output from agent_runs where id=${success.id}`;
+      expect(done.status).toBe('SUCCEEDED');
+      expect(done.output.browserEvidence).toEqual(evidence);
+      const [verified] =
+        await db`select published_verified,browser_verified_revision from projects where id=${projectId}`;
+      expect(verified).toMatchObject({ published_verified: true, browser_verified_revision: 1 });
+    } finally {
+      http.mockRestore();
+      browser.mockRestore();
+      if (oldOrigin) process.env.APP_URL = oldOrigin;
+      else delete process.env.APP_URL;
+    }
+  });
+  it('binds signed-provider payments to exact merchant, order and amount, idempotently preserving refunds', async () => {
+    const keys = generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+    });
+    for (const [key, value] of Object.entries({
+      WECHAT_PAY_ENABLED: 'true',
+      APP_URL: 'https://oneboss.example',
+      WECHAT_MCH_ID: '1234567890',
+      WECHAT_APP_ID: 'wx1234567890abcdef',
+      WECHAT_CERT_SERIAL: 'ABCDEF0123456789',
+      WECHAT_PRIVATE_KEY: keys.privateKey,
+      WECHAT_PUBLIC_KEY_ID: 'PUB_KEY_ID_12345678',
+      WECHAT_PUBLIC_KEY: keys.publicKey,
+      WECHAT_API_V3_KEY: '12345678901234567890123456789012',
+    }))
+      vi.stubEnv(key, value);
+    const provider = vi
+      .spyOn(wxProvider, 'wechatRequest')
+      .mockResolvedValue({ code_url: 'weixin://wxpay/bizpayurl?pr=test-fixture' });
+    try {
+      const q = await transaction(owner, (tx) => core.createQuote(tx, orgId, 'basic'));
+      const o = await transaction(owner, (tx) => core.createOrder(tx, orgId, q.id, false));
+      const first = await createWechatCheckout(owner, o.id),
+        second = await createWechatCheckout(owner, o.id);
+      expect(first.qrDataUrl.startsWith('data:image/png;base64,')).toBe(true);
+      expect(second.qrDataUrl).toBe(first.qrDataUrl);
+      const payments = await db`select * from wechat_payments where order_id=${o.id}`;
+      expect(payments).toHaveLength(1);
+      expect((await transaction(owner, (tx) => core.order(tx, owner, o.id))).pay_state).toBe(
+        'PENDING_CONFIRMATION',
+      );
+      const value = {
+        appid: 'wx1234567890abcdef',
+        mchid: '1234567890',
+        out_trade_no: payments[0].out_trade_no,
+        transaction_id: 'wx-test-transaction-0001',
+        trade_state: 'SUCCESS',
+        amount: { total: o.amount_minor, currency: 'CNY', payer_total: 1 },
+      };
+      await expect(
+        db.begin((tx) =>
+          applyWechatTransaction(tx, { ...value, amount: { ...value.amount, total: 1 } }),
+        ),
+      ).rejects.toThrow('PAYMENT_AMOUNT_MISMATCH');
+      await expect(
+        db.begin((tx) => applyWechatTransaction(tx, { ...value, mchid: '9999999999' })),
+      ).rejects.toThrow('WECHAT_MERCHANT_MISMATCH');
+      await expect(reconcileWechatOrder(stranger, o.id)).rejects.toThrow('FORBIDDEN');
+      await db.begin((tx) => applyWechatTransaction(tx, value));
+      await db.begin((tx) => applyWechatTransaction(tx, value));
+      expect((await transaction(owner, (tx) => core.order(tx, owner, o.id))).pay_state).toBe(
+        'PAID',
+      );
+      expect(await db`select * from project_entitlements where order_id=${o.id}`).toHaveLength(1);
+      const events =
+        await db`select verification_method,verified_by from payment_events where order_id=${o.id}`;
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        verification_method: 'provider_signature',
+        verified_by: null,
+      });
+      await transaction(owner, (tx) => core.requestRefund(tx, owner, o.id, o.amount_minor));
+      await db.begin((tx) => applyWechatTransaction(tx, value));
+      expect((await transaction(owner, (tx) => core.order(tx, owner, o.id))).pay_state).toBe(
+        'REFUND_PENDING',
+      );
+      expect(
+        (await db`select revoked from project_entitlements where order_id=${o.id}`)[0].revoked,
+      ).toBe(true);
+      const q2 = await transaction(owner, (tx) => core.createQuote(tx, orgId, 'basic'));
+      const o2 = await transaction(owner, (tx) => core.createOrder(tx, orgId, q2.id, false));
+      await createWechatCheckout(owner, o2.id);
+      const [p2] = await db`select * from wechat_payments where order_id=${o2.id}`;
+      await expect(
+        db.begin((tx) => applyWechatTransaction(tx, { ...value, out_trade_no: p2.out_trade_no })),
+      ).rejects.toThrow('EVENT_CONFLICT');
+      provider.mockResolvedValue({
+        mchid: '1234567890',
+        appid: 'wx1234567890abcdef',
+        out_trade_no: p2.out_trade_no,
+        trade_state: 'NOTPAY',
+      });
+      expect((await closeWechatOrder(owner, o2.id)).payState).toBe('CLOSED');
+      expect((await closeWechatOrder(owner, o2.id)).payState).toBe('CLOSED');
+      await expect(createWechatCheckout(owner, o2.id)).rejects.toThrow('ORDER_CLOSING');
+    } finally {
+      provider.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
+  it('allows platform review without tenant membership and rejects ordinary customer admin access', async () => {
+    const reviewer = { userId: randomUUID() };
+    await db`insert into platform_admins(user_id) values(${reviewer.userId})`;
+    await expect(transaction(owner, (tx) => adminWorkspace(tx, owner))).rejects.toThrow(
+      'PLATFORM_ADMIN_REQUIRED',
+    );
+    expect(
+      (await transaction(reviewer, (tx) => adminWorkspace(tx, reviewer))).orders.some(
+        (o) => o.id === orderId,
+      ),
+    ).toBe(true);
+    const q = await transaction(owner, (tx) => core.createQuote(tx, orgId, 'basic'));
+    const o = await transaction(owner, (tx) => core.createOrder(tx, orgId, q.id, false));
+    const attempt = await transaction(owner, (tx) =>
+      core.checkout(tx, owner, o.id, 'manual_verified'),
+    );
+    const identity = vi.spyOn(auth, 'authenticate').mockResolvedValue(owner);
+    const request = () =>
+      new Request(`http://localhost/api/commerce/orders/${o.id}/confirm-manual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': randomUUID() },
+        body: JSON.stringify({
+          attemptId: attempt.attempt.id,
+          eventId: 'reviewer-manual-event',
+          amountMinor: o.amount_minor,
+          currency: 'CNY',
+          evidenceRef: 'isolated-manual-fixture-reference',
+        }),
+      });
+    const context = {
+      params: Promise.resolve({ path: ['commerce', 'orders', o.id, 'confirm-manual'] }),
+    };
+    try {
+      expect((await POST(request(), context)).status).toBe(403);
+      identity.mockResolvedValue(reviewer);
+      expect((await POST(request(), context)).status).toBe(200);
+      expect((await transaction(owner, (tx) => core.order(tx, owner, o.id))).pay_state).toBe(
+        'PAID',
+      );
     } finally {
       identity.mockRestore();
     }

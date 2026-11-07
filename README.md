@@ -1,7 +1,10 @@
-# OneBoss AI — A 组 Core
+# OneBoss AI — 创意宣传制作服务
 
-A 组负责服务订单、支付核验、Supabase 权限、MiMo 调度、发布与交付。
-官网、工作台、网站/海报实际渲染由 B 组另行开发。真实 Supabase 登录、MiMo 调用及 A 独立 HTTP/worker 流程已验证；不宣称真实收款或公网客户作品已验收。证据和部署环境的验证边界见 [A 独立验收](docs/A_ACCEPTANCE.md)。
+统一 Next.js 工程已接入 A 后端与实际 B 渲染引擎，并实现官网、套餐、真实登录、订单、产品资料、设计批准、预览、局部修改、发布与交付工作台。提供方 BlackCode。当前整站集成仍在验收，最新状态见 [项目完成矩阵](docs/PROJECT_COMPLETION.md)，历史 A/B 公网验收见 [验收证据](docs/A_ACCEPTANCE.md)。
+
+正式微信支付默认关闭，所有者已明确稍后配置商户。外部邮箱注册/重置需要自定义 SMTP，目前入口提示未开放；已有已确认账户可登录。没有把演示订单当作真实收款。
+
+客户页面：`/`、`/pricing`、`/checkout`、`/login`、`/dashboard`、`/dashboard/projects/:id/intake|creative|studio|revise|delivery|agents`。平台审核：`/dashboard/admin`，要求已有 `platform_admins` 授权，不自动授予新账户权限。
 
 ## 本地开发
 
@@ -24,6 +27,8 @@ npm run worker
 - [A/B 接口合同与接入说明](docs/PROJECT_CONTRACT.md)
 - [配置、启动、故障恢复与验收](docs/RUNBOOK.md)
 - [Windows 本地凭据填写](docs/LOCAL_SETUP_WINDOWS.md)
+- [微信商户私下配置](docs/WECHAT_SETUP.md)
+- [外部注册发信配置](docs/EMAIL_SETUP.md)
 - [A 后端 Docker / Render 开发部署](docs/DEPLOY_RENDER.md)
 - [当前验证证据与未完成项](docs/demo-proof.md)
 - [开源选型记录](docs/opensource-audit-a.md)

@@ -111,6 +111,7 @@ function renderAssets(
   values: unknown[],
   projectId: string,
   publicUrls: boolean,
+  expectedOrigin = process.env.NEXT_PUBLIC_SUPABASE_URL,
 ): Asset[] {
   const byId = new Map(
     values.map((value) => {
@@ -124,7 +125,7 @@ function renderAssets(
     if (publicUrls) {
       assert(asset.url, 'PUBLIC_ASSET_URL_REQUIRED');
       const url = new URL(asset.url),
-        origin = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!);
+        origin = new URL(expectedOrigin!);
       assert(
         url.origin === origin.origin &&
           url.pathname.startsWith('/storage/v1/object/sign/') &&
@@ -227,10 +228,26 @@ function specs(facts: RenderFactType[], id: string): SiteSection {
     },
   };
 }
-export function mapSite(input: Parameters<CreativeAdapter['renderSite']>[0], publicUrls = true) {
+export function mapSite(
+  input: Parameters<CreativeAdapter['renderSite']>[0],
+  publicUrls = true,
+  expectedOrigin = process.env.NEXT_PUBLIC_SUPABASE_URL,
+) {
+  return mapSiteForView(input, publicUrls, expectedOrigin, false);
+}
+/** A direction is a proposal, never an approval or publication. No asset URLs are consumed here. */
+export function mapDirectionSite(input: Parameters<CreativeAdapter['renderSite']>[0]) {
+  return mapSiteForView({ ...input, assets: [] }, true, undefined, true);
+}
+function mapSiteForView(
+  input: Parameters<CreativeAdapter['renderSite']>[0],
+  publicUrls = true,
+  expectedOrigin = process.env.NEXT_PUBLIC_SUPABASE_URL,
+  proposal = false,
+) {
   const { site } = input;
   assert(
-    input.design.approvedByClient &&
+    (proposal || input.design.approvedByClient) &&
       input.design.version === site.designSystemVersion &&
       input.design.factVersion === site.factVersion,
     'DESIGN_VERSION_MISMATCH',
@@ -244,6 +261,7 @@ export function mapSite(input: Parameters<CreativeAdapter['renderSite']>[0], pub
     input.assets,
     site.projectId,
     publicUrls,
+    expectedOrigin,
   );
   const seed = seedFor(site.projectId, site.factVersion, facts, assets);
   const sections: SiteSection[] = page.sections.flatMap((section, index): SiteSection[] => {
