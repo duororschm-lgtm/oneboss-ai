@@ -81,6 +81,7 @@ const messages: Record<string, string> = {
   ORDER_NOT_PAYABLE: '当前订单无法继续付款，请刷新检查最新状态。',
   ENTITLEMENT_REQUIRED: '此订单暂时没有有效制作权益。',
   STALE_REVISION: '资料或版本已更新，请刷新后继续。',
+  STALE_DELIVERY: '资料已更新，请按当前版本重新生成并发布交付文件。',
   NO_REVISIONS_LEFT: '套餐修改次数已用完。',
   PLAN_LIMIT: '提交的产品或海报数量超出套餐权益。',
   DELIVERY_NOT_READY: '交付包还在准备，请稍后刷新。',

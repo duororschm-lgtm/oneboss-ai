@@ -495,7 +495,11 @@ describe.sequential('real PostgreSQL business invariants', () => {
   });
   it('authorizes private poster and ZIP downloads before signing', async () => {
     const prefix = `${orgId}/${projectId}/deliveries/1/test`;
-    await db`insert into deliveries(org_id,project_id,revision,manifest,zip_path) values(${orgId},${projectId},1,${db.json({ posters: [{ path: 'posters/test.png' }] })},${prefix + '/delivery.zip'})`;
+    const [previous] =
+      await db`select published_revision,published_verified from projects where id=${projectId}`;
+    await db`update projects set published_revision=1,published_verified=true where id=${projectId}`;
+    await db`insert into deliveries(org_id,project_id,revision,manifest,zip_path) values(${orgId},${projectId},1,${db.json({ siteRevision: 1, factVersion: 2, posters: [{ path: 'posters/test.png' }] })},${prefix + '/delivery.zip'})`;
+    await db`insert into deliveries(org_id,project_id,revision,manifest,zip_path) values(${orgId},${projectId},2,${db.json({ siteRevision: 2, factVersion: 2, posters: [] })},${prefix + '/newer.zip'})`;
     const identity = vi.spyOn(auth, 'authenticate').mockResolvedValue(stranger);
     const signer = vi
       .spyOn(files, 'signed')
@@ -517,12 +521,15 @@ describe.sequential('real PostgreSQL business invariants', () => {
       );
       expect(allowed.status).toBe(200);
       const body = await allowed.json();
+      expect(body.manifest.siteRevision).toBe(1); // A rollback must not download a newer delivery.
       expect(body.expiresIn).toBe(300);
       expect(body.posterDownloads[0].url).toBe(
         'https://signed.example/' + prefix + '/posters/test.png',
       );
       expect(signer).toHaveBeenCalledTimes(2);
     } finally {
+      await db`delete from deliveries where project_id=${projectId} and revision=2`;
+      await db`update projects set published_revision=${previous.published_revision},published_verified=${previous.published_verified} where id=${projectId}`;
       identity.mockRestore();
       signer.mockRestore();
     }
@@ -675,7 +682,8 @@ describe.sequential('real PostgreSQL business invariants', () => {
       await db`update projects set published_verified=true,browser_verified_revision=null where id=${projectId}`;
       expect((await (await accept()).json()).error.code).toBe('VERIFIED_SITE_REQUIRED');
       await db`update projects set browser_verified_revision=1 where id=${projectId}`;
-      // The minimal download fixture has no factVersion and cannot be accepted.
+      // A download from an older fact snapshot cannot be accepted even with fresh browser QA.
+      await db`update deliveries set manifest=jsonb_set(manifest,'{factVersion}','1') where project_id=${projectId} and revision=1`;
       expect((await (await accept()).json()).error.code).toBe('DELIVERY_NOT_READY');
     } finally {
       identity.mockRestore();

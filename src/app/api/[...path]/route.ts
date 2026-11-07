@@ -212,10 +212,11 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
         if (path[3] === 'delivery')
           return response(
             await transaction(actor, async (tx) => {
-              await service.project(tx, actor, id);
+              const current = await service.project(tx, actor, id);
               const [d] =
-                await tx`select * from deliveries where project_id=${id} order by revision desc limit 1`;
+                await tx`select * from deliveries where project_id=${id} and revision=${current.published_revision}`;
               assert(d, 'DELIVERY_NOT_READY', 404);
+              assert(d.manifest.factVersion === current.fact_version, 'STALE_DELIVERY', 409);
               return {
                 id: d.id,
                 manifest: d.manifest,
