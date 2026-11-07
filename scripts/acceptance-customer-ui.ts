@@ -192,13 +192,24 @@ try {
   assert.equal(order.plan_snapshot.poster_count, 3, 'SERVER_ADDON_ENTITLEMENT');
   // Isolated DB fixture entitlement, explicitly changed to demo; never impersonates live payment.
   await db`update service_orders set is_demo=true,pay_state='PAID' where id=${order.id}`;
-  await db`insert into project_entitlements(order_id,org_id,remaining_revisions,max_products,max_posters,is_demo,expires_at) values(${order.id},${order.org_id},2,1,1,true,now()+interval '1 day')`;
+  await db`insert into project_entitlements(order_id,org_id,remaining_revisions,max_products,max_posters,is_demo,expires_at) values(${order.id},${order.org_id},2,10,2,true,now()+interval '1 day')`;
   await page.reload();
   await page.getByRole('button', { name: '进入制作项目 →', exact: true }).click();
   await page.waitForURL('**/projects/*/intake');
   phase = 'intake-and-approval';
   await page.getByLabel('产品名称', { exact: true }).fill('浏览器验收椅子');
   await page.getByLabel('产品介绍', { exact: true }).fill('隔离测试产品，不是真实销售。');
+  for (let index = 1; index < 10; index++) {
+    await page.getByRole('button', { name: /添加产品（最多/ }).click();
+    await page
+      .getByLabel('产品名称', { exact: true })
+      .nth(index)
+      .fill(`系列验收产品 ${index + 1}`);
+    await page
+      .getByLabel('产品介绍', { exact: true })
+      .nth(index)
+      .fill('关联产品目录的隔离浏览器验收资料，不是真实销售。');
+  }
   await page
     .getByLabel('这次宣传想达到什么目的？', { exact: true })
     .fill('制作清晰标识的验收作品。');
@@ -211,8 +222,15 @@ try {
   assert(project);
   const [brief] = await db`select * from creative_briefs where project_id=${project.id}`;
   assert(brief.approved_at, 'UI_APPROVAL_NOT_PERSISTED');
+  assert.deepEqual(brief.body.deliverables.posterFormats, ['portrait', 'square']);
   const [fact] =
     await db`select id,product_id from product_facts where project_id=${project.id} and key='name'`;
+  const catalogFacts =
+    await db`select id from product_facts where project_id=${project.id} and version=1`;
+  assert.equal(
+    (await db`select count(*)::int n from products where project_id=${project.id}`)[0].n,
+    10,
+  );
   const f = fixture();
   const design = { ...f.design, styleId: 'editorial-minimal', approvedByClient: false };
   await db`insert into agent_runs(org_id,project_id,role,status,input,output,completed_at) values(${order.org_id},${project.id},'design','SUCCEEDED',${db.json({ factVersion: 1 })},${db.json({ choices: [design, { ...design, styleId: 'future-tech', layoutMode: 'future-grid', rationale: '几何布局' }] })},now())`;
@@ -221,6 +239,13 @@ try {
   await page.getByRole('button', { name: '选择并批准此方向', exact: true }).first().click();
   await page.getByText('已批准方向：editorial-minimal', { exact: false }).waitFor();
   const production = structuredClone(f.production);
+  const squareCopy = { ...production.copy[0], id: randomUUID(), posterId: randomUUID() };
+  production.posters.push({
+    ...structuredClone(production.posters[0]),
+    canvas: { width: 1080, height: 1080 },
+    copyPackRef: squareCopy.id,
+  });
+  production.copy.push(squareCopy);
   production.site.projectId = project.id;
   production.site.pages[0].sections[0].factRefs = [fact.id];
   production.site.pages[0].sections.push({
@@ -229,7 +254,26 @@ try {
     factRefs: [fact.id],
     assetRefs: [],
   });
+  production.site.pages[0].sections.push({
+    type: 'product-grid',
+    props: {},
+    factRefs: catalogFacts.map((f) => f.id),
+    assetRefs: [],
+  });
+  production.site.allowedSectionTypes.push('product-grid');
   production.site.allowedSectionTypes.push('specs');
+  production.site.pages.push({
+    slug: 'about',
+    title: '产品说明',
+    sections: [{ type: 'story', props: {}, factRefs: [fact.id], assetRefs: [] }],
+  });
+  production.site.allowedSectionTypes.push('story');
+  production.site.pages[0].sections.push({
+    type: 'story',
+    props: {},
+    factRefs: [fact.id],
+    assetRefs: [],
+  });
   production.site.interactions = ['tabs'];
   for (const p of production.posters) {
     p.projectId = project.id;
@@ -243,18 +287,74 @@ try {
   await db`insert into artifact_versions(org_id,project_id,revision,fact_version,body) values(${order.org_id},${project.id},1,1,${db.json(production)})`;
   await page.getByRole('link', { name: '作品预览', exact: true }).click();
   await page.frameLocator('iframe[title="私有网站预览"]').locator('.site').waitFor();
+  const previewFrame = page.frameLocator('iframe[title="私有网站预览"]');
+  phase = 'private-page-selection';
+  await page.getByLabel('预览页面', { exact: true }).selectOption('about');
+  await previewFrame.locator('.story-section').waitFor();
+  await page.getByLabel('预览页面', { exact: true }).selectOption('');
+  phase = 'preview-hero-scroll';
+  await previewFrame.locator('.hero-actions button').click();
+  await page.waitForFunction(
+    () =>
+      (document.querySelector('iframe[title="私有网站预览"]') as HTMLIFrameElement)?.contentWindow!
+        .scrollY > 100,
+  );
+  phase = 'preview-brand-scroll';
+  await previewFrame.getByRole('button', { name: '回到顶部', exact: true }).click();
+  await page.waitForFunction(
+    () =>
+      (document.querySelector('iframe[title="私有网站预览"]') as HTMLIFrameElement)?.contentWindow!
+        .scrollY < 150,
+  );
   const tab = page
     .frameLocator('iframe[title="私有网站预览"]')
     .locator('[data-oneboss-interaction]')
     .first();
+  phase = 'keyboard-tabs';
   await tab.click();
+  await previewFrame.getByRole('tab', { name: '资料说明', exact: true }).press('ArrowLeft');
+  assert(
+    await previewFrame
+      .getByRole('tab', { name: '已确认资料', exact: true })
+      .evaluate(
+        (element) =>
+          element.ownerDocument.activeElement === element &&
+          element.getAttribute('aria-selected') === 'true',
+      ),
+    'TAB_KEYBOARD_FOCUS_AND_SELECTION',
+  );
+  phase = 'ten-product-related-details';
+  assert.equal(await previewFrame.locator('.product-card').count(), 10);
+  await previewFrame.getByRole('button', { name: /系列验收产品 10/ }).click();
+  assert.equal(await previewFrame.locator('.product-detail h3').innerText(), '系列验收产品 10');
+  phase = 'dual-poster-preview';
   await page.getByRole('button', { name: '查看海报草稿', exact: true }).click();
   await page.getByRole('img', { name: '海报草稿 1', exact: true }).waitFor();
+  await page.getByRole('img', { name: '海报草稿 2', exact: true }).waitFor();
   assert(
     await page
       .getByRole('img', { name: '海报草稿 1', exact: true })
       .evaluate((img) => (img as HTMLImageElement).naturalWidth === 1080),
     'DRAFT_PNG_NOT_RENDERED',
+  );
+  assert.equal(
+    await page
+      .getByRole('img', { name: '海报草稿 1', exact: true })
+      .evaluate((img) => (img as HTMLImageElement).naturalHeight),
+    1350,
+  );
+  assert.equal(
+    await page
+      .getByRole('img', { name: '海报草稿 2', exact: true })
+      .evaluate((img) => (img as HTMLImageElement).naturalHeight),
+    1080,
+  );
+  const copyDownload = page.waitForEvent('download');
+  await page.getByRole('link', { name: '下载文案 Markdown', exact: true }).first().click();
+  const copyPath = await (await copyDownload).path();
+  assert(
+    copyPath && (await readFile(copyPath, 'utf8')).includes('事实版本：1'),
+    'COPY_MARKDOWN_DOWNLOAD',
   );
   await page.getByRole('button', { name: '手机', exact: true }).click();
   assert(
@@ -278,6 +378,43 @@ try {
     await db`select status,approved_by from artifact_versions where project_id=${project.id}`;
   assert.equal(version.status, 'APPROVED');
   assert.equal(version.approved_by, userId);
+  phase = 'local-fixture-public-navigation-and-metadata';
+  // LOCAL demo fixture only: exercises route rendering, not worker/publication proof.
+  await db`update projects set published_revision=1 where id=${project.id}`;
+  const publicView = await context.newPage();
+  for (const width of [375, 768, 1280]) {
+    await publicView.setViewportSize({ width, height: 900 });
+    await publicView.goto(`${origin}/p/${project.publish_slug}`);
+    await publicView
+      .getByRole('navigation', { name: '网站页面', exact: true })
+      .getByRole('link', { name: '产品说明', exact: true })
+      .click();
+    await publicView.waitForURL(`**/p/${project.publish_slug}/about`);
+    assert((await publicView.title()).includes('产品说明'), 'APPROVED_PAGE_METADATA');
+    assert.equal(
+      await publicView.locator('meta[name="description"]').getAttribute('content'),
+      production.site.seo.description,
+    );
+    assert.equal(
+      await publicView
+        .getByRole('navigation', { name: '网站页面', exact: true })
+        .locator('[aria-current="page"]')
+        .innerText(),
+      '产品说明',
+    );
+    assert(
+      !(await publicView
+        .locator('body')
+        .evaluate((element) => element.scrollWidth > innerWidth + 1)),
+      'PUBLIC_SUBPAGE_OVERFLOW',
+    );
+    await publicView.screenshot({
+      path: `${artifacts}/public-subpage-${width}.png`,
+      fullPage: true,
+    });
+  }
+  await publicView.close();
+  await db`update projects set published_revision=null where id=${project.id}`;
   await page.getByRole('link', { name: '任务记录', exact: true }).click();
   await page.getByRole('heading', { name: '真实任务记录', exact: true }).waitFor();
   assert.deepEqual(errors, [], 'BROWSER_ERRORS');

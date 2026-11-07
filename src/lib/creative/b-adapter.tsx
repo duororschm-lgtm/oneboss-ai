@@ -1,4 +1,4 @@
-import { createElement } from 'react';
+import { createElement, Fragment } from 'react';
 import sharp from 'sharp';
 import QRCode from 'qrcode';
 import { z } from 'zod';
@@ -13,12 +13,42 @@ import { posterGeometry } from '../../vendor/creative-b/lib/creative/poster-rend
 
 export const renderSite: CreativeAdapter['renderSite'] = (input) => {
   const mapped = mapSite(input);
-  return createElement(SiteRenderer, {
+  const content = createElement(SiteRenderer, {
     spec: mapped.spec,
     designSystem: mapped.design,
     seed: mapped.seed,
     mode: 'public',
   });
+  if (!input.publicBasePath || input.site.pages.length < 2) return content;
+  assert(/^\/p\/[a-z0-9-]+$/.test(input.publicBasePath), 'INVALID_PUBLIC_PATH');
+  return createElement(
+    Fragment,
+    null,
+    createElement(
+      'nav',
+      {
+        className: 'site-pages',
+        'aria-label': '网站页面',
+        style: {
+          background: mapped.design.palette.background,
+          color: mapped.design.palette.text,
+          borderColor: mapped.design.palette.border,
+        },
+      },
+      input.site.pages.map((page) =>
+        createElement(
+          'a',
+          {
+            key: page.slug,
+            href: input.publicBasePath + (page.slug ? '/' + page.slug : ''),
+            'aria-current': page.slug === (input.pageSlug || '') ? 'page' : undefined,
+          },
+          page.title,
+        ),
+      ),
+    ),
+    content,
+  );
 };
 function checkText(mapped: ReturnType<typeof mapPoster>) {
   const geo = posterGeometry(mapped.spec.layout, mapped.spec.canvas.height);

@@ -102,7 +102,7 @@ export async function runOne() {
       const result = await callMimo(Production, 'production team', {
         ...context,
         previousValidationError: run.error_class ?? null,
-        task: `Generate site, posters and copy referencing only supplied verified facts. BUSINESS CONTRACT: site.pages MUST contain exactly one root page whose slug is the EMPTY STRING "", never "home" or "/". Other page slugs must be unique lowercase a-z, digits or hyphens. Every section type must also appear in site.allowedSectionTypes. Include specs information tabs as a real interaction. Fact refs must be actual supplied approved fact IDs, never keys or invented UUIDs. Asset refs must be actual supplied asset IDs; return [] when none exist. Set all projectId and factVersion values to the supplied project. Use the approved design version for site and all posters. Generate exactly the brief deliverables.posterCount posters and the same number of copy packs, each poster referencing a different existing copy ID. If a previousValidationError is supplied, correct that invariant; do not repeat the rejected structure.`,
+        task: `Generate site, posters and copy referencing only supplied verified facts. BUSINESS CONTRACT: site.pages MUST contain exactly one root page whose slug is the EMPTY STRING "", never "home" or "/". Other page slugs must be unique lowercase a-z, digits or hyphens. Every section type must also appear in site.allowedSectionTypes. Include specs information tabs as a real interaction. If more than one product is supplied, the root page MUST include product-grid with factRefs containing the name, description and price facts of every approved product; the catalog must offer associated details, not unrelated standalone pages. Fact refs must be actual supplied approved fact IDs, never keys or invented UUIDs. Asset refs must be actual supplied asset IDs; return [] when none exist. Set all projectId and factVersion values to the supplied project. Use the approved design version for site and all posters. Generate exactly the brief deliverables.posterCount posters and the same number of copy packs, each poster referencing a different existing copy ID. When brief.deliverables.posterFormats is present, preserve its order and set each canvas to portrait=1080x1350 or square=1080x1080; both formats use independent layout, never crop a rendered image. If a previousValidationError is supplied, correct that invariant; do not repeat the rejected structure.`,
       });
       usage = result.usage;
       validateProduction(
@@ -112,6 +112,7 @@ export async function runOne() {
         context.facts,
         context.assets.map((x) => x.id),
         context.e.max_posters,
+        context.brief.deliverables,
       );
       assert(
         result.output.site.designSystemVersion === context.design.version,

@@ -269,12 +269,18 @@ function IntakeEditor({
     [restrictions, setRestrictions] = useState(
       brief?.body.restrictions.join('\n') || '不编造未经确认的材质、性能、销量或优惠。',
     );
-  const [posterCount, setPosterCount] = useState(brief?.body.deliverables.posterCount || 1),
+  const [posterCount, setPosterCount] = useState(
+      brief?.body.deliverables.posterCount || Math.min(2, data.entitlement.max_posters),
+    ),
     [confirmed, setConfirmed] = useState(false),
     [localError, setLocalError] = useState(''),
     [uploading, setUploading] = useState(false),
     [authorized, setAuthorized] = useState(false),
     [question, setQuestion] = useState('');
+  const [posterFormats, setPosterFormats] = useState<('portrait' | 'square')[]>(
+    brief?.body.deliverables.posterFormats ||
+      Array.from({ length: posterCount }, (_, index) => (index % 2 ? 'square' : 'portrait')),
+  );
   const [selectedAssets, setSelectedAssets] = useState<string[]>(
     brief?.body.assetRefs || data.assets.map((a) => a.id),
   );
@@ -341,7 +347,7 @@ function IntakeEditor({
             .map((a) => a.id),
           preferredStyles: brief?.body.preferredStyles || [],
           restrictions: restrictions.split('\n').filter(Boolean),
-          deliverables: { site: true, posterCount, xhsCopy: true },
+          deliverables: { site: true, posterCount, posterFormats, xhsCopy: true },
           approval: 'pending',
         },
       });
@@ -429,6 +435,7 @@ function IntakeEditor({
                 <label>
                   产品名称
                   <input
+                    aria-label="产品名称"
                     required
                     maxLength={150}
                     value={p.name}
@@ -438,6 +445,7 @@ function IntakeEditor({
                 <label>
                   产品介绍
                   <textarea
+                    aria-label="产品介绍"
                     required
                     maxLength={2000}
                     value={p.description}
@@ -581,15 +589,52 @@ function IntakeEditor({
           </label>
           <label>
             本次海报数量
-            <input
-              type="number"
-              min={1}
-              max={data.entitlement.max_posters}
+            <select
+              aria-label="本次海报数量"
               value={posterCount}
-              onChange={(e) => setPosterCount(Number(e.target.value))}
-            />
+              onChange={(e) => {
+                const count = Number(e.target.value);
+                setPosterCount(count);
+                setPosterFormats((previous) =>
+                  Array.from(
+                    { length: count },
+                    (_, index) => previous[index] || (index % 2 ? 'square' : 'portrait'),
+                  ),
+                );
+                setConfirmed(false);
+              }}
+            >
+              {Array.from({ length: Math.min(20, data.entitlement.max_posters) }, (_, index) => (
+                <option key={index} value={index + 1}>
+                  {index + 1} 张
+                </option>
+              ))}
+            </select>
             <small>套餐最多 {data.entitlement.max_posters} 张。</small>
           </label>
+          <fieldset>
+            <legend>海报尺寸</legend>
+            <p className="ob-muted">每张单独排版。不同尺寸各计一张海报，可按投放位置选择。</p>
+            {posterFormats.map((format, index) => (
+              <label key={index}>
+                海报 {index + 1} 尺寸
+                <select
+                  aria-label={`海报 ${index + 1} 尺寸`}
+                  value={format}
+                  onChange={(e) => {
+                    const next = e.target.value as 'portrait' | 'square';
+                    setPosterFormats((previous) =>
+                      previous.map((value, i) => (i === index ? next : value)),
+                    );
+                    setConfirmed(false);
+                  }}
+                >
+                  <option value="portrait">竖版 · 1080×1350</option>
+                  <option value="square">方形 · 1080×1080</option>
+                </select>
+              </label>
+            ))}
+          </fieldset>
           <label className="ob-check">
             <input
               type="checkbox"
@@ -783,7 +828,9 @@ function CreativeChoices({
 function PrivatePreview({ id, revision }: { id: string; revision: number }) {
   const [mapped, setMapped] = useState<ReturnType<typeof mapSite>>(),
     [error, setError] = useState(''),
-    [width, setWidth] = useState<'mobile' | 'desktop'>('desktop');
+    [width, setWidth] = useState<'mobile' | 'desktop'>('desktop'),
+    [preview, setPreview] = useState<Parameters<typeof mapSite>[0]>(),
+    [pageSlug, setPageSlug] = useState('');
   useEffect(() => {
     let live = true;
     void customerApi(`core/projects/${id}/preview?revision=${revision}`)
@@ -791,6 +838,8 @@ function PrivatePreview({ id, revision }: { id: string; revision: number }) {
         const m = mapSite(v, true, publicAuthUrl());
         if (live) {
           setMapped(m);
+          setPreview(v);
+          setPageSlug('');
           setError('');
         }
       })
@@ -825,6 +874,25 @@ function PrivatePreview({ id, revision }: { id: string; revision: number }) {
           </button>
         </div>
       </div>
+      {preview && preview.site.pages.length > 1 && (
+        <label>
+          预览页面
+          <select
+            aria-label="预览页面"
+            value={pageSlug}
+            onChange={(e) => {
+              setPageSlug(e.target.value);
+              setMapped(mapSite({ ...preview, pageSlug: e.target.value }, true, publicAuthUrl()));
+            }}
+          >
+            {preview.site.pages.map((page) => (
+              <option value={page.slug} key={page.slug}>
+                {page.title}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       {error ? (
         <Notice error>{error}</Notice>
       ) : mapped ? (
@@ -913,7 +981,7 @@ function CopyCards({ copy }: { copy: Row[] }) {
     <section className="ob-card">
       <h2>小红书配套文案</h2>
       {message && <Notice>{message}</Notice>}
-      {copy.map((c) => (
+      {copy.map((c, index) => (
         <article key={c.id} className="ob-row" style={{ display: 'block' }}>
           <h3>{c.title}</h3>
           <p className="ob-copy">{c.body}</p>
@@ -930,6 +998,13 @@ function CopyCards({ copy }: { copy: Row[] }) {
           >
             复制整套文案
           </button>
+          <a
+            className="ob-button ob-ghost ob-small"
+            href={`data:text/markdown;charset=utf-8,${encodeURIComponent(`${c.title}\n\n${c.body}\n\n${c.hashtags.join(' ')}\n\n${c.cta}\n事实版本：${c.factVersion}\n`)}`}
+            download={`xiaohongshu-poster-${index + 1}.md`}
+          >
+            下载文案 Markdown
+          </a>
         </article>
       ))}
     </section>
@@ -1044,6 +1119,25 @@ function Delivery({
               </article>
             ))}
           </div>
+          {delivery.qrDownloads?.length > 0 && (
+            <section className="ob-card">
+              <h2>网站二维码</h2>
+              <p>二维码指向当前交付的网站地址，可独立保存后用于其他宣传素材。</p>
+              <img
+                src={delivery.qrDownloads[0].url}
+                alt="已发布宣传网站二维码"
+                style={{ width: 220, maxWidth: '100%', height: 'auto' }}
+              />
+              <a
+                href={delivery.qrDownloads[0].url}
+                target="_blank"
+                rel="noreferrer"
+                className="ob-button ob-ghost"
+              >
+                打开 / 保存二维码 ↓
+              </a>
+            </section>
+          )}
         </>
       )}
       {latest && <CopyCards copy={latest.body.copy} />}

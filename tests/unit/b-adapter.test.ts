@@ -63,6 +63,24 @@ it('reuses B React rendering with approved references, information tabs and one 
     validateProduction({ production: f.production, design: f.design, facts: [f.fact], assets: [] }),
   ).resolves.toEqual({ pass: true, issues: [] });
 });
+it('links every approved public subpage and marks the current page without exposing private routes', async () => {
+  const f = input();
+  f.siteInput.site.pages.push({
+    slug: 'details',
+    title: '产品详情',
+    sections: f.siteInput.site.pages[0].sections,
+  });
+  const html = renderToStaticMarkup(
+    await renderSite({ ...f.siteInput, pageSlug: 'details', publicBasePath: '/p/test-slug' }),
+  );
+  expect(html).toContain('aria-label="网站页面"');
+  expect(html).toContain('href="/p/test-slug"');
+  expect(html).toContain('href="/p/test-slug/details" aria-current="page"');
+  expect(html).not.toContain('/preview/');
+  expect(() => renderSite({ ...f.siteInput, publicBasePath: '//outside.example' })).toThrow(
+    'INVALID_PUBLIC_PATH',
+  );
+});
 it('never renders unconfirmed facts or a stale approved design', () => {
   const f = input();
   expect(() => mapSite({ ...f.siteInput, facts: [{ ...f.fact, verified: false }] })).toThrow(
@@ -101,23 +119,27 @@ it('requires signed public image URLs from the configured Supabase project', () 
     }),
   ).toThrow('UNAUTHORIZED_ASSET_URL');
 });
-it('uses the actual B SVG engine and independently decodes its final PNG and standalone QR', async () => {
-  vi.stubEnv('APP_URL', 'https://oneboss.example');
-  const f = input();
-  const result = await renderPoster(f.posterInput);
-  await expect(
-    inspectPng(
-      result.pngBytes,
-      1080,
-      1350,
-      f.posterInput.publicSiteUrl,
-      'auto_bottom_right_or_left',
-    ),
-  ).resolves.toHaveProperty('sha256');
-  await expect(
-    inspectPng(result.qrBytes, 800, 800, f.posterInput.publicSiteUrl),
-  ).resolves.toHaveProperty('sha256');
-});
+it.each([1350, 1080] as const)(
+  'uses actual B layout for height %i and independently decodes PNG and QR',
+  async (height) => {
+    vi.stubEnv('APP_URL', 'https://oneboss.example');
+    const f = input();
+    f.posterInput.poster.canvas = { width: 1080, height };
+    const result = await renderPoster(f.posterInput);
+    await expect(
+      inspectPng(
+        result.pngBytes,
+        1080,
+        height,
+        f.posterInput.publicSiteUrl,
+        'auto_bottom_right_or_left',
+      ),
+    ).resolves.toHaveProperty('sha256');
+    await expect(
+      inspectPng(result.qrBytes, 800, 800, f.posterInput.publicSiteUrl),
+    ).resolves.toHaveProperty('sha256');
+  },
+);
 it('loads an authorized real image from Storage, and rejects foreign project paths before download', async () => {
   vi.stubEnv('APP_URL', 'https://oneboss.example');
   const f = input(),

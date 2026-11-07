@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { SiteSpec, PosterSpec, ProductPrice, ChangeRequest } from '../../src/contracts';
+import { SiteSpec, PosterSpec, ProductPrice, ChangeRequest, Brief } from '../../src/contracts';
 import { validateProduction } from '../../src/lib/core/validation';
 import { publicAddress, appOrigin } from '../../src/lib/security/network';
 import { fixture } from '../fixtures';
@@ -8,6 +8,35 @@ describe('shared contracts and production boundaries', () => {
   it('accepts a bounded real production contract', () => {
     const f = fixture();
     expect(() => validateProduction(f.production, f.projectId, 1, [f.fact], [], 2)).not.toThrow();
+  });
+  it('requires the exact requested poster quantity and selected dimensions', () => {
+    const f = fixture();
+    const requested = {
+      site: true,
+      posterCount: 1,
+      posterFormats: ['square'],
+      xhsCopy: true,
+    } as const;
+    const options = { ...requested, posterFormats: ['square' as const] };
+    expect(() =>
+      validateProduction(f.production, f.projectId, 1, [f.fact], [], 2, options),
+    ).toThrow('POSTER_FORMAT_MISMATCH');
+    f.production.posters[0].canvas = { width: 1080, height: 1080 };
+    expect(() =>
+      validateProduction(f.production, f.projectId, 1, [f.fact], [], 2, options),
+    ).not.toThrow();
+    expect(() =>
+      validateProduction(f.production, f.projectId, 1, [f.fact], [], 2, {
+        ...options,
+        posterCount: 2,
+      }),
+    ).toThrow('POSTER_COUNT_MISMATCH');
+    const deliverables = Brief.shape.deliverables;
+    expect(deliverables.safeParse(options).success).toBe(true);
+    expect(deliverables.safeParse({ ...options, posterCount: 2 }).success).toBe(false);
+    expect(deliverables.safeParse({ site: true, posterCount: 1, xhsCopy: true }).success).toBe(
+      true,
+    );
   });
   it.each(['javascript', 'html', 'onClick'])('rejects executable prop %s', (key) => {
     const f = fixture();
@@ -29,6 +58,23 @@ describe('shared contracts and production boundaries', () => {
     expect(() => validateProduction(f.production, f.projectId, 1, [f.fact], [], 2)).toThrow(
       'UNAUTHORIZED',
     );
+  });
+  it('requires a related root catalog covering every approved product', () => {
+    const f = fixture();
+    const other = { ...f.fact, id: randomUUID(), productId: randomUUID(), value: '第二款产品' };
+    expect(() => validateProduction(f.production, f.projectId, 1, [f.fact, other], [], 2)).toThrow(
+      'MULTIPRODUCT_CATALOG_REQUIRED',
+    );
+    f.production.site.pages[0].sections.push({
+      type: 'product-grid',
+      props: {},
+      factRefs: [f.fact.id, other.id],
+      assetRefs: [],
+    });
+    f.production.site.allowedSectionTypes.push('product-grid');
+    expect(() =>
+      validateProduction(f.production, f.projectId, 1, [f.fact, other], [], 2),
+    ).not.toThrow();
   });
   it('rejects arbitrary QR URL and unsupported dimensions', () => {
     const f = fixture();

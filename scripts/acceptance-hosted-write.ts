@@ -137,7 +137,10 @@ try {
   phase = 'hosted-demo-order';
   const org = await api('core/organizations', token, { name: 'OneBoss 临时演示验收' }, 201);
   orgId = org.id;
-  const quote = await api('commerce/quotes', token, { orgId, planCode: 'basic' });
+  const quote = await api('commerce/quotes', token, {
+    orgId,
+    planCode: process.env.RUN_HOSTED_FORMAT_ACCEPTANCE === 'true' ? 'professional' : 'basic',
+  });
   const order = await api('commerce/orders', token, { orgId, quoteId: quote.id, isDemo: true });
   assert.equal(order.is_demo, true);
   await api(`commerce/orders/${order.id}/checkout`, token, { channel: 'sandbox' }, 403);
@@ -398,7 +401,11 @@ try {
     publicTestSiteRemovedAfterCheck: businessRemoved,
   };
   console.log(JSON.stringify(result));
-  await mkdir('.cache/hosted-acceptance', { recursive: true });
-  await writeFile('.cache/hosted-acceptance/result.json', JSON.stringify(result, null, 2));
+  const resultDir =
+    process.env.RUN_HOSTED_FORMAT_ACCEPTANCE === 'true'
+      ? '.cache/hosted-dual-formats-summary'
+      : '.cache/hosted-acceptance';
+  await mkdir(resultDir, { recursive: true });
+  await writeFile(`${resultDir}/result.json`, JSON.stringify(result, null, 2));
   if (!result.passed) process.exitCode = 1;
 }

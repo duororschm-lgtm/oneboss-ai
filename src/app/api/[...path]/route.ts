@@ -244,6 +244,19 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
                     ),
                   })),
                 ),
+                qrDownloads: await Promise.all(
+                  ((d.manifest.files || []) as { path: string; storagePath?: string }[])
+                    .filter(
+                      (file) =>
+                        /^qrcode\/qr-[0-9]+\.png$/.test(file.path) &&
+                        file.storagePath ===
+                          `${d.zip_path.slice(0, d.zip_path.lastIndexOf('/'))}/${file.path}`,
+                    )
+                    .map(async (file) => ({
+                      path: file.path,
+                      url: await signed(file.storagePath!),
+                    })),
+                ),
                 expiresIn: 300,
               };
             }),

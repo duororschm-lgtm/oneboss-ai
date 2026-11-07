@@ -8,6 +8,7 @@ export interface CreativeAdapter {
   renderPosterPreview?(input: Parameters<CreativeAdapter['renderPoster']>[0]): Promise<Uint8Array>;
   renderSite(input: {
     pageSlug?: string;
+    publicBasePath?: string;
     site: z.infer<typeof SiteSpec>;
     design: z.infer<typeof DesignSystem>;
     facts: unknown[];

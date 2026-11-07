@@ -29,7 +29,8 @@ export async function verifyHostedCustomerFlow({
   runEvidence: unknown[];
 }) {
   assert.equal(origin, 'https://oneboss-ai.onrender.com');
-  const dir = '.cache/hosted-customer-ui';
+  const formatAcceptance = process.env.RUN_HOSTED_FORMAT_ACCEPTANCE === 'true';
+  const dir = formatAcceptance ? '.cache/hosted-dual-formats' : '.cache/hosted-customer-ui';
   await mkdir(dir, { recursive: true });
   const browser = await chromium.launch({
     ...(process.platform === 'win32' ? { channel: 'msedge' } : {}),
@@ -103,6 +104,17 @@ export async function verifyHostedCustomerFlow({
   async function verifyDelivery(expectedRevision: number) {
     const delivery = await read(`core/projects/${projectId}/delivery`);
     assert.equal(delivery.manifest.siteRevision, expectedRevision);
+    if (formatAcceptance) {
+      assert.equal(delivery.qrDownloads.length, 2);
+      const qrResponse = await outboundFetch(delivery.qrDownloads[0].url);
+      assert(qrResponse.ok, 'SIGNED_QR_DOWNLOAD_FAILED');
+      await inspectPng(
+        new Uint8Array(await qrResponse.arrayBuffer()),
+        800,
+        800,
+        delivery.manifest.publicSiteUrl,
+      );
+    }
     const response = await outboundFetch(delivery.zipDownloadUrl, {
       signal: AbortSignal.timeout(30000),
     });
@@ -116,13 +128,23 @@ export async function verifyHostedCustomerFlow({
       assert.equal(data.length, file.size);
       assert.equal(hash(data), file.sha256);
     }
-    for (const poster of delivery.manifest.posters)
+    for (const [index, poster] of delivery.manifest.posters.entries()) {
       await inspectPng(
         await archive.file(poster.path)!.async('nodebuffer'),
         poster.width,
         poster.height,
         delivery.manifest.publicSiteUrl,
         'auto_bottom_right_or_left',
+      );
+      await writeFile(
+        `${dir}/poster-r${expectedRevision}-${index + 1}.png`,
+        await archive.file(poster.path)!.async('nodebuffer'),
+      );
+    }
+    if (formatAcceptance)
+      assert.deepEqual(
+        delivery.manifest.posters.map((p: Row) => p.height),
+        [1350, 1080],
       );
     await writeFile(`${dir}/delivery-r${expectedRevision}.zip`, bytes);
     await writeFile(
@@ -153,7 +175,22 @@ export async function verifyHostedCustomerFlow({
       .fill('这是完整客户流程的系统演示资料，不是真实商品销售，不发生真实付款。');
     await page
       .getByLabel('这次宣传想达到什么目的？', { exact: true })
-      .fill('制作明确标识的宣传网站、1张高清海报和小红书配套文案，用于系统验收。');
+      .fill(
+        formatAcceptance
+          ? '制作明确标识的两个产品系列展示网站，首页有产品列表和可查看的详情；两张海报分别为1080×1350竖版、1080×1080方形，配套小红书文案，仅用于系统验收。'
+          : '制作明确标识的宣传网站、高清海报和小红书配套文案，用于系统验收。',
+      );
+    if (formatAcceptance) {
+      await page.getByRole('button', { name: /添加产品（最多/ }).click();
+      await page.getByLabel('产品名称', { exact: true }).nth(1).fill('OneBoss 第二款演示产品');
+      await page
+        .getByLabel('产品介绍', { exact: true })
+        .nth(1)
+        .fill('同系列的第二款演示产品，仅用于验证关联产品展示，不是真实商品销售。');
+      await page.getByLabel('本次海报数量', { exact: false }).selectOption('2');
+      await page.getByLabel('海报 1 尺寸', { exact: true }).selectOption('portrait');
+      await page.getByLabel('海报 2 尺寸', { exact: true }).selectOption('square');
+    }
     await page.getByRole('checkbox', { name: '我拥有这些图片的宣传使用权', exact: true }).check();
     const bytes = await sharp({
       create: { width: 320, height: 320, channels: 3, background: '#d74c2f' },
@@ -178,6 +215,10 @@ export async function verifyHostedCustomerFlow({
     const confirmed = await workspace();
     assert.equal(confirmed.assets.length, 1);
     assert(confirmed.briefs[0].body.assetRefs.includes(confirmed.assets[0].id));
+    if (formatAcceptance) {
+      assert.equal(confirmed.products.length, 2);
+      assert.deepEqual(confirmed.briefs[0].body.deliverables.posterFormats, ['portrait', 'square']);
+    }
     phase('real-hosted-design-and-production');
     await page.getByRole('link', { name: '创意方向', exact: true }).click();
     await run('生成创意方案', 'design');
@@ -204,6 +245,22 @@ export async function verifyHostedCustomerFlow({
     await run('生成正式交付包', 'delivery');
     const first = await verifyDelivery(1);
     await page.getByRole('button', { name: '我已检查成品，确认验收', exact: true }).click();
+    if (formatAcceptance) {
+      assert.deepEqual(errors, [], 'BROWSER_ERRORS');
+      await page.screenshot({ path: `${dir}/customer-delivery.png`, fullPage: true });
+      checks.push(
+        'real hosted two-product intake and MiMo production, selected portrait/square independent PNG layouts, public three-width QA, ZIP/PNG/QR hashes and customer acceptance; no real payment',
+      );
+      await writeFile(
+        `${dir}/result.json`,
+        JSON.stringify(
+          { passed: true, isDemo: true, realPayment: false, manifest: first, runEvidence },
+          null,
+          2,
+        ),
+      );
+      return first;
+    }
     phase('real-site-only-revision');
     const original = (await workspace()).versions.find((v) => v.revision === 1)!.body;
     await page.getByRole('link', { name: '提出修改', exact: true }).click();

@@ -1,4 +1,5 @@
-import { type ProductionType, type FactType } from '../../contracts';
+import { type ProductionType, type FactType, type Brief } from '../../contracts';
+import type { z } from 'zod';
 import { assert } from './errors';
 export function validateProduction(
   output: ProductionType,
@@ -7,6 +8,7 @@ export function validateProduction(
   approvedFacts: FactType[],
   assetIds: string[],
   maxPosters: number,
+  requested?: z.infer<typeof Brief>['deliverables'],
 ) {
   assert(approvedFacts.length > 0, 'APPROVED_FACTS_REQUIRED');
   assert(
@@ -25,6 +27,18 @@ export function validateProduction(
     output.posters.length <= maxPosters && output.copy.length === output.posters.length,
     'POSTER_PLAN_LIMIT',
   );
+  if (requested) {
+    assert(output.posters.length === requested.posterCount, 'POSTER_COUNT_MISMATCH');
+    if (requested.posterFormats)
+      assert(
+        output.posters.every(
+          (poster, index) =>
+            poster.canvas.width === 1080 &&
+            poster.canvas.height === (requested.posterFormats![index] === 'square' ? 1080 : 1350),
+        ),
+        'POSTER_FORMAT_MISMATCH',
+      );
+  }
   const factIds = new Set(approvedFacts.filter((x) => x.verified).map((x) => x.id)),
     assets = new Set(assetIds);
   const checkFacts = (ids: string[]) =>
@@ -39,6 +53,23 @@ export function validateProduction(
     );
   const slugs = output.site.pages.map((x) => x.slug);
   assert(new Set(slugs).size === slugs.length && slugs.includes(''), 'INVALID_SITE_PAGES');
+  const productIds = new Set(
+    approvedFacts.filter((fact) => fact.verified).map((fact) => fact.productId),
+  );
+  if (productIds.size > 1) {
+    const catalogRefs = new Set(
+      output.site.pages
+        .find((page) => page.slug === '')!
+        .sections.filter((section) => section.type === 'product-grid')
+        .flatMap((section) => section.factRefs),
+    );
+    assert(
+      [...productIds].every((productId) =>
+        approvedFacts.some((fact) => fact.productId === productId && catalogRefs.has(fact.id)),
+      ),
+      'MULTIPRODUCT_CATALOG_REQUIRED',
+    );
+  }
   for (const page of output.site.pages)
     for (const section of page.sections) {
       checkFacts(section.factRefs);

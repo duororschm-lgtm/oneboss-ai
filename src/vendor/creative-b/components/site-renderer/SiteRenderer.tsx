@@ -43,8 +43,10 @@ export function SiteRenderer({ spec, designSystem, seed, mode = 'preview' }: Pro
   const [menuOpen, setMenuOpen] = useState(false);
   const sectionId = (id: string) => `${uid}-${id}`;
   const scrollTo = (id: string) => {
-    const node = document.getElementById(sectionId(id));
-    node?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const doc = rootRef.current?.ownerDocument;
+    const node = doc?.getElementById(sectionId(id));
+    const reduceMotion = doc?.defaultView?.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    node?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
     setMenuOpen(false);
   };
 
@@ -99,8 +101,10 @@ export function SiteRenderer({ spec, designSystem, seed, mode = 'preview' }: Pro
   const assetOf = (ref?: string): Asset | undefined =>
     seed.assets.find((asset) => asset.id === ref);
   const navSections = page.sections.filter((section) => !['hero', 'cta'].includes(section.type));
-  const heroIndex = page.sections.findIndex((section) => section.id === 'hero');
+  const heroIndex = page.sections.findIndex((section) => section.type === 'hero');
   const nextAfterHero = page.sections[heroIndex + 1];
+  const firstSection = page.sections[heroIndex >= 0 ? heroIndex : 0];
+  const contactSection = page.sections.find((section) => section.type === 'cta');
 
   return (
     <div
@@ -113,7 +117,7 @@ export function SiteRenderer({ spec, designSystem, seed, mode = 'preview' }: Pro
         <button
           className="site-brand"
           type="button"
-          onClick={() => scrollTo('hero')}
+          onClick={() => firstSection && scrollTo(firstSection.id)}
           aria-label="回到顶部"
         >
           <i aria-hidden />
@@ -139,9 +143,11 @@ export function SiteRenderer({ spec, designSystem, seed, mode = 'preview' }: Pro
               {navLabel[section.type] ?? section.type}
             </button>
           ))}
-          <button type="button" className="nav-cta" onClick={() => scrollTo('cta')}>
-            了解更多 <ArrowRight size={15} />
-          </button>
+          {contactSection && (
+            <button type="button" className="nav-cta" onClick={() => scrollTo(contactSection.id)}>
+              了解更多 <ArrowRight size={15} />
+            </button>
+          )}
         </nav>
       </header>
 
@@ -423,6 +429,7 @@ function Specs({
   const [active, setActive] = useState(0);
   const tabs = section.props.tabs;
   const rows = tabs[active]?.rows ?? [];
+  const tabId = useId();
   return (
     <section className="site-section specs-section">
       <SectionHead order={order} title={section.props.title} />
@@ -431,9 +438,20 @@ function Specs({
         role="tablist"
         aria-label="产品信息分类"
         onKeyDown={(event) => {
-          if (event.key === 'ArrowRight') setActive((current) => (current + 1) % tabs.length);
-          if (event.key === 'ArrowLeft')
-            setActive((current) => (current - 1 + tabs.length) % tabs.length);
+          const next =
+            event.key === 'ArrowRight'
+              ? (active + 1) % tabs.length
+              : event.key === 'ArrowLeft'
+                ? (active - 1 + tabs.length) % tabs.length
+                : event.key === 'Home'
+                  ? 0
+                  : event.key === 'End'
+                    ? tabs.length - 1
+                    : undefined;
+          if (next === undefined) return;
+          event.preventDefault();
+          setActive(next);
+          event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
         }}
       >
         {tabs.map((tab, tabIndex) => (
@@ -441,6 +459,8 @@ function Specs({
             key={tab.label}
             type="button"
             role="tab"
+            id={`${tabId}-tab-${tabIndex}`}
+            aria-controls={`${tabId}-panel`}
             aria-selected={tabIndex === active}
             data-oneboss-interaction={tabIndex === 1 ? 'tabs' : undefined}
             tabIndex={tabIndex === active ? 0 : -1}
@@ -451,7 +471,12 @@ function Specs({
           </button>
         ))}
       </div>
-      <div className="spec-table" role="tabpanel">
+      <div
+        className="spec-table"
+        role="tabpanel"
+        id={`${tabId}-panel`}
+        aria-labelledby={`${tabId}-tab-${active}`}
+      >
         {rows.map((row) => (
           <div key={row.label} className={row.verified ? '' : 'pending'}>
             <span>{row.label}</span>

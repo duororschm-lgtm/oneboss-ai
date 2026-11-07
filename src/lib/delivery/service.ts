@@ -69,16 +69,22 @@ export async function createDelivery(run: Record<string, any>, context: Record<s
   await verifyPublicUrl(url, `/p/${p.publish_slug}`);
   const renderer = await creative(),
     zip = new JSZip(),
-    files: { path: string; sha256: string; size: number }[] = [],
+    files: { path: string; sha256: string; size: number; storagePath?: string }[] = [],
     posters: Record<string, unknown>[] = [];
   let totalBytes = 0;
-  const add = (path: string, bytes: Buffer | string) => {
+  const add = (path: string, bytes: Buffer | string, storagePath?: string) => {
     totalBytes += Buffer.byteLength(bytes);
     assert(totalBytes < 50 * 1024 * 1024, 'ZIP_TOO_LARGE');
     zip.file(path, bytes);
-    files.push({ path, sha256: hash(bytes), size: Buffer.byteLength(bytes) });
+    files.push({
+      path,
+      sha256: hash(bytes),
+      size: Buffer.byteLength(bytes),
+      ...(storagePath ? { storagePath } : {}),
+    });
   };
   const prefix = `${p.org_id}/${p.id}/deliveries/${p.published_revision}/${run.id}-${run.lease_token}`;
+  const createdAt = new Date().toISOString();
   for (const [i, poster] of production.posters.entries()) {
     const result = await renderer.renderPoster({
       poster,
@@ -101,13 +107,14 @@ export async function createDelivery(run: Record<string, any>, context: Record<s
     assert(qrMeta.width && qrMeta.height, 'INVALID_QR_PNG');
     await inspectPng(result.qrBytes, qrMeta.width, qrMeta.height, url);
     add(path, Buffer.from(result.pngBytes));
-    add(qrPath, Buffer.from(result.qrBytes));
+    const storedQr = await store(`${prefix}/${qrPath}`, result.qrBytes, 'image/png');
+    add(qrPath, Buffer.from(result.qrBytes), storedQr);
     await store(`${prefix}/${path}`, result.pngBytes, 'image/png');
     const copy = production.copy.find((x) => x.id === poster.copyPackRef);
     assert(copy, 'COPY_MISSING');
     add(
       `copy/xiaohongshu-poster-${i + 1}.md`,
-      `${copy.title}\n\n${copy.body}\n\n${copy.hashtags.join(' ')}\n\n${copy.cta}\n网址：${url}\n事实版本：${copy.factVersion}\n海报：${path}\n`,
+      `${copy.title}\n\n${copy.body}\n\n${copy.hashtags.join(' ')}\n\n${copy.cta}\n网址：${url}\n事实版本：${copy.factVersion}\n海报：${path}\n制作时间：${createdAt}\n`,
     );
     posters.push({
       path,
@@ -132,7 +139,7 @@ export async function createDelivery(run: Record<string, any>, context: Record<s
     factVersion: p.fact_version,
     posters,
     files,
-    createdAt: new Date().toISOString(),
+    createdAt,
   });
   zip.file('manifest.json', JSON.stringify(manifest, null, 2));
   const bytes = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });

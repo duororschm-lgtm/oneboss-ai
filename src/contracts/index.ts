@@ -2,6 +2,7 @@ import { z } from 'zod';
 export const Id = z.uuid();
 export const Revision = z.number().int().positive();
 export const Money = z.number().int().nonnegative().max(2_000_000_000);
+export const PosterFormat = z.enum(['portrait', 'square']);
 export const ProductPrice = z
   .object({
     amountMinor: Money.nullable(),
@@ -39,9 +40,14 @@ export const Brief = z
       .object({
         site: z.literal(true),
         posterCount: z.number().int().min(1).max(20),
+        posterFormats: z.array(PosterFormat).min(1).max(20).optional(),
         xhsCopy: z.literal(true),
       })
-      .strict(),
+      .strict()
+      .refine((value) => !value.posterFormats || value.posterFormats.length === value.posterCount, {
+        message: 'Each requested poster needs one format',
+        path: ['posterFormats'],
+      }),
     approval: z.enum(['pending', 'approved', 'changes_requested']),
   })
   .strict();
@@ -223,7 +229,14 @@ export const DeliveryManifest = z
         qrTargetUrl: z.url(),
       }),
     ),
-    files: z.array(z.object({ path: z.string(), sha256: z.string(), size: z.number() })),
+    files: z.array(
+      z.object({
+        path: z.string(),
+        sha256: z.string(),
+        size: z.number(),
+        storagePath: z.string().optional(),
+      }),
+    ),
     createdAt: z.iso.datetime(),
   })
   .strict();

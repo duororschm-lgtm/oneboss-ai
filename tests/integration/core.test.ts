@@ -324,6 +324,12 @@ describe.sequential('real PostgreSQL business invariants', () => {
     production.site.factVersion = 2;
     production.posters[0].factVersion = 2;
     production.copy[0].factVersion = 2;
+    const secondCopy = { ...production.copy[0], id: randomUUID(), posterId: randomUUID() };
+    production.posters.push({
+      ...structuredClone(production.posters[0]),
+      copyPackRef: secondCopy.id,
+    });
+    production.copy.push(secondCopy);
     const design = { ...f.design, factVersion: 2 };
     await db`insert into design_systems(org_id,project_id,revision,body,approved_at) values(${orgId},${projectId},1,${db.json(design)},now())`;
     const mock = vi.spyOn(gateway, 'callMimo');
@@ -535,7 +541,17 @@ describe.sequential('real PostgreSQL business invariants', () => {
     const [previous] =
       await db`select published_revision,published_verified from projects where id=${projectId}`;
     await db`update projects set published_revision=1,published_verified=true where id=${projectId}`;
-    await db`insert into deliveries(org_id,project_id,revision,manifest,zip_path) values(${orgId},${projectId},1,${db.json({ siteRevision: 1, factVersion: 2, posters: [{ path: 'posters/test.png' }] })},${prefix + '/delivery.zip'})`;
+    await db`insert into deliveries(org_id,project_id,revision,manifest,zip_path) values(${orgId},${projectId},1,${db.json(
+      {
+        siteRevision: 1,
+        factVersion: 2,
+        posters: [{ path: 'posters/test.png' }],
+        files: [
+          { path: 'qrcode/qr-1.png', storagePath: prefix + '/qrcode/qr-1.png' },
+          { path: 'qrcode/qr-2.png', storagePath: 'other-project/qrcode/qr-2.png' },
+        ],
+      },
+    )},${prefix + '/delivery.zip'})`;
     await db`insert into deliveries(org_id,project_id,revision,manifest,zip_path) values(${orgId},${projectId},2,${db.json({ siteRevision: 2, factVersion: 2, posters: [] })},${prefix + '/newer.zip'})`;
     const identity = vi.spyOn(auth, 'authenticate').mockResolvedValue(stranger);
     const signer = vi
@@ -563,7 +579,10 @@ describe.sequential('real PostgreSQL business invariants', () => {
       expect(body.posterDownloads[0].url).toBe(
         'https://signed.example/' + prefix + '/posters/test.png',
       );
-      expect(signer).toHaveBeenCalledTimes(2);
+      expect(body.qrDownloads).toEqual([
+        { path: 'qrcode/qr-1.png', url: 'https://signed.example/' + prefix + '/qrcode/qr-1.png' },
+      ]);
+      expect(signer).toHaveBeenCalledTimes(3);
     } finally {
       await db`delete from deliveries where project_id=${projectId} and revision=2`;
       await db`update projects set published_revision=${previous.published_revision},published_verified=${previous.published_verified} where id=${projectId}`;
@@ -626,6 +645,14 @@ describe.sequential('real PostgreSQL business invariants', () => {
         ]),
       );
       expect(await archive.file('site-url.txt')!.async('string')).toBe(url);
+      const copy = await archive.file('copy/xiaohongshu-poster-1.md')!.async('string');
+      expect(copy).toContain(`制作时间：${delivery.manifest.createdAt}`);
+      const qrFile = delivery.manifest.files.find(
+        (file: { path: string }) => file.path === 'qrcode/qr-1.png',
+      );
+      expect(uploaded.get(qrFile.storagePath)).toEqual(
+        await archive.file(qrFile.path)!.async('nodebuffer'),
+      );
       for (const file of delivery.manifest.files) {
         const bytes = await archive.file(file.path)!.async('nodebuffer');
         expect(bytes.length).toBe(file.size);
