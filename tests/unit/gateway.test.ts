@@ -2,6 +2,19 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { fetch as transport } from 'undici';
 import { callMimo } from '../../src/lib/mimo/gateway';
+it('classifies model timeout, transport failure and invalid envelopes without exposing provider data', async () => {
+  for (const [error, expected] of [
+    [new DOMException('private timeout details', 'TimeoutError'), 'MIMO_TIMEOUT'],
+    [new TypeError('private network details'), 'MIMO_NETWORK_ERROR'],
+  ] as const) {
+    vi.mocked(transport).mockRejectedValueOnce(error);
+    await expect(callMimo(z.object({}), 'production team', {})).rejects.toThrow(expected);
+  }
+  vi.mocked(transport).mockResolvedValueOnce(new Response('<html>private gateway</html>') as any);
+  await expect(callMimo(z.object({}), 'production team', {})).rejects.toThrow(
+    'MIMO_ENVELOPE_INVALID',
+  );
+});
 vi.mock('undici', async (importOriginal) => ({
   ...(await importOriginal<typeof import('undici')>()),
   fetch: vi.fn(),

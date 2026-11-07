@@ -209,6 +209,19 @@ export async function runOne() {
         'DESIGN_FACT_VERSION_CHANGED',
         'FACT_APPROVAL_REQUIRED',
       ].includes(code);
+    console.error(
+      JSON.stringify({
+        runId: run.id,
+        role: run.role,
+        attempt: run.attempt,
+        errorClass: code,
+        errorName:
+          error instanceof Error && /^[A-Za-z0-9_]{1,50}$/.test(error.name)
+            ? error.name
+            : 'Unknown',
+        terminal,
+      }),
+    );
     await database().begin(async (tx) => {
       const rows =
         await tx`update agent_runs set status=${terminal ? 'FAILED' : 'QUEUED'},error_class=${code},usage=${tx.json(usage as any)},lease_token=null,lease_until=null,completed_at=${terminal ? new Date() : null},next_attempt_at=now()+${run.attempt * 10}*interval '1 second' where id=${run.id} and lease_token=${run.lease_token} returning id`;

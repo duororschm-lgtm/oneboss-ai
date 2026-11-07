@@ -51,7 +51,7 @@ export async function verifyHostedCustomerFlow({
   async function run(button: string, role: string) {
     const previous = new Set((await workspace()).runs.map((r) => r.id));
     await page.getByRole('button', { name: button, exact: true }).click();
-    for (let n = 0; n < 200; n++) {
+    for (let n = 0; n < 360; n++) {
       const data = await workspace(),
         current = data.runs.find((r) => r.role === role && !previous.has(r.id));
       if (current?.status === 'SUCCEEDED') {
@@ -68,7 +68,19 @@ export async function verifyHostedCustomerFlow({
         console.log(JSON.stringify(evidence));
         return data;
       }
-      assert(current?.status !== 'FAILED', `HOSTED_${role}_${current?.error_class}`);
+      if (current?.status === 'FAILED') {
+        const failed = {
+          runId: current.id,
+          role,
+          status: current.status,
+          errorClass: current.error_class,
+          attempt: current.attempt,
+          usage: current.usage,
+        };
+        runEvidence.push(failed);
+        console.log(JSON.stringify(failed));
+        throw Error(`HOSTED_${role}_${current.error_class}`);
+      }
       await new Promise((r) => setTimeout(r, 2500));
     }
     throw Error(`HOSTED_${role}_TIMEOUT`);
@@ -108,14 +120,15 @@ export async function verifyHostedCustomerFlow({
     assert.equal(delivery.manifest.siteRevision, expectedRevision);
     if (formatAcceptance) {
       assert.equal(delivery.qrDownloads.length, 2);
-      const qrResponse = await outboundFetch(delivery.qrDownloads[0].url);
-      assert(qrResponse.ok, 'SIGNED_QR_DOWNLOAD_FAILED');
-      await inspectPng(
-        new Uint8Array(await qrResponse.arrayBuffer()),
-        800,
-        800,
-        delivery.manifest.publicSiteUrl,
-      );
+      for (const [index, qr] of delivery.qrDownloads.entries()) {
+        const qrResponse = await outboundFetch(qr.url, { signal: AbortSignal.timeout(30000) });
+        assert(qrResponse.ok, 'SIGNED_QR_DOWNLOAD_FAILED');
+        const bytes = Buffer.from(await qrResponse.arrayBuffer());
+        await inspectPng(bytes, 800, 800, delivery.manifest.publicSiteUrl);
+        const file = delivery.manifest.files.find((f: Row) => f.path === qr.path);
+        assert(file && file.sha256 === hash(bytes), 'SIGNED_QR_HASH_MISMATCH');
+        await writeFile(`${dir}/qr-${index + 1}.png`, bytes);
+      }
     }
     const response = await outboundFetch(delivery.zipDownloadUrl, {
       signal: AbortSignal.timeout(30000),

@@ -58,18 +58,39 @@ export async function callMimo<T>(
     ];
     requestBody.tool_choice = { type: 'function', function: { name: 'read_project_facts' } };
   }
-  const response = await proxyFetch(`${base}/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'api-key': key },
-    body: JSON.stringify(requestBody),
-    signal: AbortSignal.timeout(90000),
-    dispatcher: (dispatcher ??= new EnvHttpProxyAgent()),
-  });
+  const timeout = AbortSignal.timeout(
+    ['production team', 'revision editor'].includes(role) ? 180000 : 90000,
+  );
+  let response: Awaited<ReturnType<typeof proxyFetch>>;
+  try {
+    response = await proxyFetch(`${base}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'api-key': key },
+      body: JSON.stringify(requestBody),
+      signal: timeout,
+      dispatcher: (dispatcher ??= new EnvHttpProxyAgent()),
+    });
+  } catch (error) {
+    const name = error instanceof Error ? error.name : 'Unknown';
+    const code =
+      timeout.aborted || ['TimeoutError', 'AbortError'].includes(name)
+        ? 'MIMO_TIMEOUT'
+        : 'MIMO_NETWORK_ERROR';
+    console.error(JSON.stringify({ errorClass: code, role }));
+    throw new AppError(code, 502);
+  }
   if (!response.ok) {
     await response.body?.cancel();
     throw new AppError(`MIMO_HTTP_${response.status}`, response.status === 429 ? 429 : 502);
   }
-  const data = (await response.json()) as {
+  let envelope: unknown;
+  try {
+    envelope = await response.json();
+  } catch {
+    throw new AppError(timeout.aborted ? 'MIMO_TIMEOUT' : 'MIMO_ENVELOPE_INVALID', 502);
+  }
+  assert(envelope && typeof envelope === 'object', 'MIMO_ENVELOPE_INVALID', 502);
+  const data = envelope as {
     id?: string;
     choices?: { message?: { content?: string; tool_calls?: unknown[] }; finish_reason?: string }[];
     usage?: unknown;
