@@ -1,9 +1,9 @@
-# B 组架构图
+﻿# B 组架构图
 
 > 对应 `b-studio/`（当前分支 `feat/creative`）。  
 > 一句话：浏览器里的 React 工作台负责“描述 → 项目 → 预览”，纯 TypeScript 领域层负责“项目 → 受控 SiteSpec / PosterSpec / 文案”，再分别渲染成真实网页、SVG/PNG 和 ZIP；真实 MiMo、支付、发布与存储由 A 组提供。
 
-![B 组架构图](architecture.png)
+![B 组架构图](architecture.png)\n\n> 平台整体架构（A 组 Core + B 组 Studio + 集成缺口）见仓库根目录 [docs/OVERALL_ARCHITECTURE.md](../../docs/OVERALL_ARCHITECTURE.md)。
 
 ## 1. 系统上下文
 
@@ -168,3 +168,4 @@ oneboss-ai/                    # 共创仓库
 ```
 
 当前 PR：<https://github.com/duororschm-lgtm/oneboss-ai/pull/2>（`feat/creative` → `main`）。
+
