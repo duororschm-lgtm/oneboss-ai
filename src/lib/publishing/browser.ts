@@ -13,15 +13,18 @@ export async function verifyPublishedBrowser(slug: string, revision: number) {
       : process.platform === 'win32'
         ? { channel: 'msedge' }
         : {}),
-    args: ['--disable-dev-shm-usage'],
+    args: ['--disable-dev-shm-usage', '--disable-gpu', '--renderer-process-limit=1'],
     timeout: 30000,
   });
   const evidence: { width: number; revision: number; passed: true }[] = [];
   try {
+    // Reuse one context/page rather than retaining a context per viewport.
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.name));
     for (const width of [375, 768, 1280]) {
-      const page = await browser.newPage({ viewport: { width, height: 900 } });
-      const errors: string[] = [];
-      page.on('pageerror', (e) => errors.push(e.name));
+      await page.setViewportSize({ width, height: 900 });
       const response = await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
       assert(response?.ok(), 'PUBLIC_SITE_UNREACHABLE', 502);
       const main = page.locator('main[data-oneboss-revision]');
@@ -53,7 +56,6 @@ export async function verifyPublishedBrowser(slug: string, revision: number) {
       );
       assert(!errors.length, 'BROWSER_ERRORS');
       evidence.push({ width, revision, passed: true });
-      await page.close();
     }
     return evidence;
   } finally {
