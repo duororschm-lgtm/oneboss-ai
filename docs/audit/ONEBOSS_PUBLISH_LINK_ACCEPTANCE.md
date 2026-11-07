@@ -8,7 +8,7 @@
 |---|---|
 | 单元 | 182项全部通过（22文件）。包含Origin/DNS/拒重定向安全、受控资产路由、外域/其他项目素材拒绝 |
 | 真实PostgreSQL集成 | 43项通过，隔离空库oneboss_publish_fix_20261108e；支付/租户/审批/交付旧回归保留，新增候选隔离、失败旧版保留、两个Worker竞争、租约失效、重试幂等与审计/无模型/无权益扣减 |
-| 真实浏览器 | 8项通过（Edge），两个命名测试商品Product A/revision1、Product B/revision2在375/768/1280均通过；持续请求复现networkidle超时，ARIA-only交互通过，静态按钮/坏图/错误revision/JS异常/缺浏览器拒绝 |
+| 真实浏览器 | 8项通过（Edge），两个命名测试商品Product A/revision1、Product B/revision2在375/768/1280均通过；持续请求复现networkidle超时，ARIA-only交互通过，带装饰动画的静态按钮/坏图/错误revision/JS异常/缺浏览器拒绝；复核不把悬停或装饰颜色变化算点击成功 |
 | 截图 | .cache/publish-browser/Product-A-*、Product-B-*，三宽度；仅本地测试HTML，非生成质量或公网证据 |
 | QR/PNG/ZIP | 集成使用真实PNG/二维码字节与ZIP解码/hash检查，外部模型/Storage/HTTP使用替身；不能称真实Supabase文件交付成功 |
 | 类型与构建 | 类型检查和构建已通过；最终提交CI另外报告 |

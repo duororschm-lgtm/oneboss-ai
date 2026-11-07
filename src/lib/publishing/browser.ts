@@ -13,16 +13,11 @@ function interactionState(element: Element) {
     .filter(Boolean)
     .map((id) => document.getElementById(id)?.outerHTML || '')
     .join('');
-  const style = getComputedStyle(element);
   return JSON.stringify({
     control: element.outerHTML,
     controlled,
     checked: (element as HTMLInputElement).checked,
     value: (element as HTMLInputElement).value,
-    display: style.display,
-    visibility: style.visibility,
-    color: style.color,
-    background: style.backgroundColor,
   });
 }
 /** Only visits our validated publication path. All real QA gates remain mandatory. */

@@ -2,6 +2,8 @@
 
 2026-11-08。基线 `1ab1d6f`，仅独立修复分支；本轮不自动部署、不迁移生产、不恢复Render。
 
+交付方式更新：所有者后续明确要求“不要做pr直接推”。已关闭PR #4，改为从修复分支将已验证提交直接快进推送feat/core；不强制推送，不覆盖其他成员成果。生产部署仍按本任务书另行批准。
+
 ## 代码变化
 
 - publishing/service.ts：复用现有publication_token与agent_runs.input.revision保存候选；候选GET必须带匹配的X-OneBoss-Publication、RUNNING有效租约、项目/事实/审批匹配。普通访客只读已验证指针。提交时再锁run/project、复核审批及权益，一次更新revision、verified、browser revision；失败只撤销自身候选令牌，不恢复旧快照覆盖其他发布。

@@ -9,7 +9,7 @@ let mode = 'valid',
   revision = 1,
   product = 'Product A';
 const html = () =>
-  `<!doctype html><html><body style="margin:0"><main data-oneboss-revision="${revision}"><h1>${product}</h1><button data-oneboss-interaction aria-pressed="false" onclick="${mode === 'inert' ? 'void 0' : `this.setAttribute('aria-pressed',this.getAttribute('aria-pressed')==='true'?'false':'true')`}">Details</button>${mode === 'broken' ? '<img src="/broken.png">' : ''}</main><script>${mode === 'errors' ? "setTimeout(()=>{throw new Error('fixture')},0);" : ''}setInterval(()=>fetch('/poll').catch(()=>{}),100);</script></body></html>`;
+  `<!doctype html><html><body style="margin:0">${mode === 'inert' ? '<style>@keyframes pulse{from{color:red}to{color:blue}}button{animation:pulse .2s infinite}</style>' : ''}<main data-oneboss-revision="${revision}"><h1>${product}</h1><button data-oneboss-interaction aria-pressed="false" onclick="${mode === 'inert' ? 'void 0' : `this.setAttribute('aria-pressed',this.getAttribute('aria-pressed')==='true'?'false':'true')`}">Details</button>${mode === 'broken' ? '<img src="/broken.png">' : ''}</main><script>${mode === 'errors' ? "setTimeout(()=>{throw new Error('fixture')},0);" : ''}setInterval(()=>fetch('/poll').catch(()=>{}),100);</script></body></html>`;
 beforeEach(() => {
   process.env.APP_URL = 'https://oneboss.example';
   vi.spyOn(network, 'verifyPublicUrl').mockImplementation(
