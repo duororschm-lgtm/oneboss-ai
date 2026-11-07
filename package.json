@@ -21,7 +21,8 @@
     "start:service": "node --env-file-if-exists=.env.local scripts/start-service.mjs",
     "acceptance:a": "tsx --env-file-if-exists=.env.local scripts/acceptance-a.ts",
     "acceptance:b": "tsx --env-file-if-exists=.env.local scripts/acceptance-b.ts",
-    "acceptance:hosted": "tsx --env-file-if-exists=.env.local scripts/acceptance-hosted.ts"
+    "acceptance:hosted": "tsx --env-file-if-exists=.env.local scripts/acceptance-hosted.ts",
+    "acceptance:hosted:write": "tsx --env-file-if-exists=.env.local scripts/acceptance-hosted-write.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.0.0",

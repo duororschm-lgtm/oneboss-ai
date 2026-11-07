@@ -94,3 +94,26 @@ Windows Node HTTPS 直连曾出现 ECONNRESET。使用机器现有的本地 HTTP
 - 同一真实 Production 经实际 B SVG/Sharp 输出 1080×1350 PNG，95500 bytes，SHA256=67e8e368c6a7a725c9870a14e3649ac6bfabd74fc01baad428e49300ef5ef13e；中文排版已查看，独立二维码解码通过。该文件是隔离渲染样张，二维码使用测试目标，不是公网交付文件。
 
 最新本地回归为 54 项单元、27 项 PostgreSQL 集成；B 原仓库 34 项测试另行通过。数据库/模型/API/worker 和 B 浏览器预览在扩展验收中均为真实实现；正式 HTTPS 发布、手机扫码、私有成品 ZIP 与托管 worker 仍需部署后验收。B 原客户工作台仍使用演示状态，不能把它描述为已接真实订单。
+
+## Render 公网全链路与手机验收（2026-11-07）
+
+这是上述历史待办的最终结果：14101fe 已部署为 Live，部署 dep-dbne9j9srm7s7396ndt0；builtin:b 已启用，health 配置检查通过，托管只读验收重新通过。保留 Free 配置，生产公开 sandbox 仍关闭，本机代理没有复制到 Render。
+
+临时真实 Auth 用户通过 Render HTTP 创建 isDemo=true 订单。公开 sandbox checkout 返回 403；受保护的原生服务端测试进程仅为此 demo 订单调用现有 demo 付款 helper 授权。没有真实付款，也没有扩大 Data API/RLS 权限。因此不代表正式商户支付或生产 HTTP sandbox 已验收。
+
+本机 worker 停止，以下任务全部由 Render worker 完成：
+
+| 任务 | run | 结果 / tokens |
+|---|---|---|
+| 设计 | 077f0c57-3ade-4583-94dd-9220e38113f3 | SUCCEEDED / 3393 |
+| 生成 | ab2f34b0-aa7b-494b-a44a-1b05a2c8b4e6 | SUCCEEDED / 7368 |
+| 发布 | 0dd96436-ae15-4909-8116-28997f32c97b | SUCCEEDED |
+| 交付 | f4bb731a-006d-4b26-8586-501913bc793c | SUCCEEDED |
+
+真实 HTTPS 页面在 375/768/1280 下交互通过，无横向溢出。私有签名 ZIP 下载 76566 bytes，逐项核对 manifest 大小及 SHA256；PNG 1080×1350、95925 bytes，SHA256=44ba8a24f158f625ab1c9d6ee897e3402029a6e0f179dc405b7cfc1b74f9d23f。独立二维码解码与公开地址匹配，客户验收已提交。用户亲自手机扫描真实二维码并回复“能打开并切换标签”。
+
+原脚本因本机原生 DB TCP 重置中断；恢复过程只使用同一临时账号和项目，通过 HTTPS 取回已完成交付并验收。账号恢复使用服务端生成 magiclink，不发送邮件、不修改其他账号。最终严格按临时 org/owner 清理业务表、私有文件及 Auth 用户；result.json 确认清理全部成功。公开测试页已删除，留存二维码目标不再可访问。
+
+本地证据位于忽略的 .cache/hosted-acceptance/：result.json、manifest.json、delivery.zip、poster.png、qr.png、三个浏览器截图及 phone-review.json；部署截图 .cache/render-live-14101fe.png。证据不含凭据。新 acceptance:hosted:write 脚本要求 RUN_HOSTED_WRITE_ACCEPTANCE=true，并增加 HTTPS 轮询、严格 TLS 的有限原生连接重试、幂等 demo 授权和清理；重构后的整脚本未再重复消耗真实模型调用，上述成功来自原运行及同项目恢复。
+
+A 后端与引擎交付验收完成；B localStorage 客户工作台仍需接真实登录/API，正式商户收款未验收。

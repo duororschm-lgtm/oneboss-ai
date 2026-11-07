@@ -1,6 +1,8 @@
 import { database, closeDatabase } from '../src/lib/core/db';
 import { chromium } from '@playwright/test';
 import { appOrigin, verifyPublicUrl } from '../src/lib/security/network';
+import { mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
 const slug = process.argv[2];
 if (!slug || !/^[a-z0-9-]{1,100}$/.test(slug))
   throw new Error('Usage: npm run smoke:public -- <published-slug>');
@@ -9,7 +11,11 @@ await verifyPublicUrl(url, `/p/${slug}`);
 const [published] =
   await database()`select id,published_revision from projects where publish_slug=${slug} and published_verified`;
 if (!published?.published_revision) throw new Error('VERIFIED_PUBLICATION_REQUIRED');
-const browser = await chromium.launch();
+const screenshotDir = process.env.SMOKE_SCREENSHOT_DIR;
+if (screenshotDir) await mkdir(screenshotDir, { recursive: true });
+const browser = await chromium.launch(
+  process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {},
+);
 try {
   for (const width of [375, 768, 1280]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
@@ -43,6 +49,8 @@ try {
     if (before === (await page.locator('main').innerHTML()))
       throw new Error('INTERACTION_NO_EFFECT');
     if (errors.length) throw new Error('BROWSER_ERRORS');
+    if (screenshotDir)
+      await page.screenshot({ path: join(screenshotDir, `${width}.png`), fullPage: true });
     console.log(JSON.stringify({ width, url, passed: true }));
     await page.close();
   }

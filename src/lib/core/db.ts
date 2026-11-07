@@ -9,7 +9,7 @@ export function database() {
   return db;
 }
 export async function closeDatabase() {
-  await db?.end();
+  await db?.end({ timeout: 5 });
   db = undefined;
 }
 export type Tx = postgres.TransactionSql;

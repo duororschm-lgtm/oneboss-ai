@@ -16,11 +16,12 @@
 
 本地凭据与现有代理已配置，实际 B 引擎已通过 `CREATIVE_ADAPTER_MODULE=builtin:b` 接入；B 原目录未修改。私有预览 API/页面需要真实 Bearer，不发布草稿。B 的客户工作台仍是 localStorage 演示，需要 B 继续接真实登录及 A API。
 
-## 完成 A 最终成功定义仍需
+## 最终托管验收结果
 
-1. 将最新集成提交手动部署到现有 Render，设置 `CREATIVE_ADAPTER_MODULE=builtin:b`，核对运行提交和两个进程；本机代理地址不得复制到 Render。自动浏览器控制当前持续超时，未触发部署。
-2. 使用能保证清理的隔离环境或数据库连接，验证托管订单写入和真实 worker 持久化；不扩大生产 Data API 授权、不伪造收款。
-3. B 客户工作台接真实 Supabase 登录及 A HTTP API，取代本地演示订单/Agent 状态；按 PROJECT_CONTRACT.md 使用私有预览数据。
-4. 真实订单/明确 demo 订单走到 HTTPS 发布，公网 375/768/1280 浏览器交互通过，手机扫码、私有 PNG/ZIP 下载及客户验收形成证据。
+Render 已手动部署 14101fe，部署 dep-dbne9j9srm7s7396ndt0 显示 Live；启用 builtin:b，health 四组配置均为 true。保留原 Free 资源与生产 sandbox 关闭状态，本机代理未复制到托管环境。
 
-整体状态是“本地真实 A/B 创意链路与私有预览已验证，最终生产部署、客户工作台与公网交付验收未完成”。
+明确标识的临时 demo 订单已走完真实 Render worker/MiMo 设计与生成、B 渲染、HTTPS 发布、三种宽度浏览器交互、私有 PNG/ZIP 下载校验及客户验收。用户亲自手机扫码，确认能打开并切换标签。授权来自受保护的服务端 demo helper，没有真实付款；公开 sandbox 接口仍拒绝调用。临时业务记录、私有文件、Auth 用户和公开测试页均已删除。
+
+本地原生数据库连接曾重置，原验收脚本中断；使用同一临时账号/项目恢复下载、验收和清理，未新建第二批业务数据。后续脚本增加 HTTPS 轮询、严格 TLS 下的有限连接重试及幂等清理。完整证据见 A_ACCEPTANCE.md。
+
+A 的后端、B 引擎集成与公网交付验收已完成。B 客户工作台接真实 Supabase 登录及 A HTTP API 仍属 B 的剩余工作，当前 localStorage 演示界面不能作为真实订单工作台；正式商户收款渠道也未验收。
