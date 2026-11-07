@@ -6,8 +6,11 @@ import { z } from 'zod';
  * Everything rendered by the site/poster engines passes through these schemas.
  */
 
-export const styleIdSchema = z.enum(['editorial-minimal', 'future-tech', 'young-vibrant']);
+export const styleIdSchema = z.string().min(1).max(60);
 export type StyleId = z.infer<typeof styleIdSchema>;
+/** Legacy preset keys — kept for backward compatibility with existing designs. */
+export const presetStyleIds = ['editorial-minimal', 'future-tech', 'young-vibrant'] as const;
+export type PresetStyleId = (typeof presetStyleIds)[number];
 
 export const hexColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/, '必须为 6 位十六进制颜色');
 
@@ -39,12 +42,14 @@ export const designSystemSchema = z.object({
   typography: typographySchema,
   spacingScale: z.number().min(0.8).max(1.6),
   radiusScale: z.number().min(0).max(48),
-  layoutMode: z.enum(['editorial', 'split', 'centered', 'staggered']),
+  layoutMode: z.string().min(1).max(60),
   motionPreset: z.enum(['subtle', 'dynamic', 'reduced']),
-  heroComposition: z.enum(['image-right', 'image-bottom', 'type-only']),
+  heroComposition: z.string().min(1).max(60),
   posterLayout: z.enum(['editorial-premium', 'future-grid', 'bold-editorial']),
   copyTone: z.string().min(1),
-  sectionFlow: z.array(z.string()).min(3),
+  sectionFlow: z.array(z.string()).min(1),
+  density: z.enum(['airy', 'balanced', 'dense']).optional(),
+  imageTreatment: z.enum(['full-bleed', 'framed', 'collage', 'minimal']).optional(),
   approvedByClient: z.boolean(),
   factVersion: z.number().int().nonnegative(),
 });
@@ -115,10 +120,28 @@ export type ProjectSeed = z.infer<typeof projectSeedSchema>;
 
 /* ------------------------------- SiteSpec ------------------------------- */
 
+export const sectionLayoutSchema = z
+  .object({
+    variant: z
+      .string()
+      .regex(/^[a-z0-9-]{1,60}$/)
+      .optional(),
+    columns: z.number().int().min(1).max(4).optional(),
+    alignment: z.enum(['left', 'center', 'right']).optional(),
+    width: z.enum(['narrow', 'standard', 'wide', 'full']).optional(),
+    emphasis: z.enum(['image-led', 'text-led', 'balanced']).optional(),
+    background: z.enum(['plain', 'surface', 'inverted', 'accent']).optional(),
+    imageRatio: z.enum(['square', 'portrait', 'landscape', 'wide']).optional(),
+  })
+  .partial()
+  .optional();
+export type SectionLayout = z.infer<typeof sectionLayoutSchema>;
+
 export const sectionSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('hero'),
     id: z.string().min(1),
+    layout: sectionLayoutSchema,
     props: z.object({
       eyebrow: z.string(),
       title: z.string().min(1),
@@ -135,15 +158,17 @@ export const sectionSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('gallery'),
     id: z.string().min(1),
+    layout: sectionLayoutSchema,
     props: z.object({
       title: z.string(),
-      assetRefs: z.array(z.string()).min(1),
+      assetRefs: z.array(z.string()),
       captions: z.array(z.string()),
     }),
   }),
   z.object({
     type: z.literal('features'),
     id: z.string().min(1),
+    layout: sectionLayoutSchema,
     props: z.object({
       title: z.string(),
       items: z.array(
@@ -158,6 +183,7 @@ export const sectionSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('specs'),
     id: z.string().min(1),
+    layout: sectionLayoutSchema,
     props: z.object({
       title: z.string(),
       tabs: z.array(
@@ -177,6 +203,7 @@ export const sectionSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('products'),
     id: z.string().min(1),
+    layout: sectionLayoutSchema,
     props: z.object({
       title: z.string(),
       items: z.array(
@@ -196,6 +223,7 @@ export const sectionSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('story'),
     id: z.string().min(1),
+    layout: sectionLayoutSchema,
     props: z.object({
       title: z.string(),
       body: z.string(),
@@ -204,8 +232,32 @@ export const sectionSchema = z.discriminatedUnion('type', [
     }),
   }),
   z.object({
+    type: z.literal('product-3d'),
+    id: z.string().min(1),
+    layout: sectionLayoutSchema,
+    props: z.object({
+      title: z.string(),
+      description: z.string(),
+      /** Trust level: appearance_3d | conceptual_exploded | verified_exploded | static_fallback */
+      modelTrust: z.enum(['appearance_3d', 'conceptual_exploded', 'verified_exploded', 'static_fallback']),
+      /** Variant: full-width-stage | split-annotation | immersive-section */
+      variant3d: z.enum(['full-width-stage', 'split-annotation', 'immersive-section']).optional(),
+      /** Part labels for exploded view (labels only, no external URLs) */
+      parts: z
+        .array(
+          z.object({
+            id: z.string().min(1),
+            label: z.string().min(1),
+            description: z.string().optional(),
+          }),
+        )
+        .optional(),
+    }),
+  }),
+  z.object({
     type: z.literal('cta'),
     id: z.string().min(1),
+    layout: sectionLayoutSchema,
     props: z.object({
       title: z.string(),
       body: z.string(),

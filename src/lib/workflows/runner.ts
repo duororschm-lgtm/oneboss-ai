@@ -5,15 +5,106 @@ import { assert, AppError } from '../core/errors';
 import { entitlement, facts } from '../core/service';
 import { DesignChoices, Production, ParsedChange, IntakeResult } from '../../contracts';
 import { callMimo } from '../mimo/gateway';
-import { validateProduction } from '../core/validation';
+import { validateProduction, validateBlueprintAdherence } from '../core/validation';
+import { checkDesignDistinctness } from '../creative/design-distinctness';
+import { assessAssetQuality } from '../visual-assets/asset-quality';
 import { publishRevision } from '../publishing/service';
 import { createDelivery } from '../delivery/service';
-export async function claimRun() {
+
+const DESIGN_TASK = `You are a commercial brand Creative Director and Interactive Web Art Director. Generate 2–3 design directions for this product — each a complete art direction with distinct visual language, page composition, interaction plan and motion rhythm. Not a template pick, not a palette swap.
+
+First analyze the product: category, form, material evidence, target audience, use scenario, customer emphasis, and the images' composition/light. Design FROM the product. Do not default to a SaaS tech landing page for every product.
+
+Each direction must carry a full Design DNA and a Site Blueprint:
+
+DESIGN DNA fields:
+- styleId: short lowercase slug (a-z, hyphens) naming this visual identity. Free-form.
+- name: direction name (max 100 chars)
+- tagline: one-line visual positioning
+- visualConcept: the design concept (why this fits the product)
+- visualKeywords: 2–5 visual keywords
+- rationale: why this design serves this product
+- palette: semantic hex tokens — keys MUST include background,surface,text,muted,accent,accentText,border. Optionally add secondaryAccent (hex).
+- gradientStops: optional array of 2–4 hex colors for controlled gradients (e.g. hero background). Keep low-frequency; not every section.
+- typography: font tokens — keys MUST include display,body,mono (font stack strings); optionally scale (0.8–1.4)
+- spacingScale: array of 1–4 numbers (px rhythm)
+- radiusScale: array of 1–2 numbers (px)
+- layoutMode: free-form short slug describing overall layout character
+- motionPreset: one of none | subtle | energetic
+- motionLanguage: calm | expressive | energetic (drives animation intensity and rhythm)
+- density: airy | balanced | dense
+- gridStyle: editorial | asymmetric | modular | full-bleed
+- imageTreatment: full-bleed | framed | collage | minimal
+- visualMotif: clean-lines | organic-shapes | geometric-grid | soft-glow | bold-blocks | fine-details
+- heroComposition: split-editorial | full-bleed | centered-stage | type-led | asymmetric
+- pageGrid: { contentWidth: narrow|standard|wide|full, columns: 4–12, gutter: 0–64 }
+- siteBlueprint: see below
+
+SITE BLUEPRINT (each direction has its own page structure):
+- pages: 1–3 pages, each { slug: "" for root (empty string), title, sections: 1–12 }
+- sections: each { type, layout, factKeys?, assetRoles?, interactionIds?, motionId?, note? }
+  - type MUST be one of: hero, gallery, features, specs, product-grid, brand, story, contact
+  - layout: { variant, columns?, alignment?, width?, emphasis?, background?, imageRatio? }
+    - variant vocabulary (pick DIFFERENT variants per direction):
+      hero: split-editorial | full-bleed | centered-stage | type-led | asymmetric
+      gallery: editorial-grid | masonry-lite | image-rail | cinematic-stage
+      features: bento | numbered-story | illustrated-list | side-by-side
+      specs: tabs | information-cards | technical-table | accordion
+      product-grid: interactive-product-selector | comparison | horizontal-showcase
+      story: sticky-split | staggered-story | full-width-manifesto
+      contact: editorial-banner | floating-cta | compact-contact
+    - width: narrow|standard|wide|full; emphasis: image-led|text-led|balanced
+    - background: plain|surface|inverted|accent|gradient
+    - imageRatio: square|portrait|landscape|wide
+    - columns: 1–4; alignment: left|center|right
+  - factKeys: semantic fact keys (e.g. "name","description","price"). NEVER UUIDs.
+  - assetRoles: semantic image roles (e.g. "hero","gallery-1","detail"). NEVER UUIDs.
+  - interactionIds: reference interaction specs by short id (e.g. "gallery-1","tabs-main","cta-copy")
+  - motionId: reference motion spec by short id (e.g. "hero-entrance","scroll-story")
+- contentWidth: narrow|standard|wide|full; visualRhythm: calm|layered|punchy
+
+INTERACTION PLAN (embed in siteBlueprint sections via interactionIds):
+Supported kinds: gallery-carousel, image-zoom, tabs, accordion, product-hotspots, product-compare, image-before-after, copy-contact, anchor-navigation
+For each interaction, describe its options in the blueprint note field (e.g. "gallery-carousel with zoom, keyboard nav").
+Prioritize: gallery-carousel, tabs, accordion, anchor-navigation, copy-contact as P0.
+Only include interactions that make sense for this product's content.
+
+MOTION PLAN (embed via motionId):
+Supported kinds: entrance-reveal, stagger-text, scroll-reveal, sticky-story, parallax-light, hover-feedback, section-transition
+Use entrance-reveal for hero, scroll-reveal for content sections, stagger-text for headlines.
+Match motion intensity to the motionLanguage: calm = subtle fades, expressive = layered reveals, energetic = dynamic transitions.
+
+CRITICAL — the 2–3 directions must be visibly different pages, not recolors:
+- different hero composition and visual narrative
+- different section ORDER and content emphasis
+- different gallery/features/story layout variants
+- different grid style, type character, density, image treatment, visual motif
+- different interaction plans and motion rhythms
+Aim for 4+ observable structural differences. Only swapping palette colors does NOT count.
+
+VISUAL QUALITY:
+- Bold color is welcome (gradients, vivid accents) when it serves the product
+- Product images must remain the visual hero
+- Typography must have clear hierarchy (headline > subhead > body > label)
+- Every screen needs one clear focal point — not everything competing
+- Mobile layout must REORGANIZE, not just shrink
+- Avoid: default purple gradients for everything, glassmorphism overload, every section as identical cards
+
+Constraints:
+- approvedByClient must be false. factVersion must match the current facts version exactly.
+- version must be 1 for all new directions.
+- Only reference fact keys that exist in the supplied verified facts. Do not invent product claims.
+- Do not invent database UUIDs anywhere.
+- Each direction is one coherent art direction, not a random mix.`;
+
+const GENERATE_BLUEPRINT_RULES = `DESIGN BLUEPRINT ADHERENCE: the approved design includes a siteBlueprint. Your site MUST keep its page structure: same page slugs, same section types in the same order, same layout variants (props.variant / props.columns / props.alignment / props.width / props.emphasis / props.background / props.imageRatio). You may fill in full content and real factRefs/assetRefs, but you may NOT change the approved composition. If a layout cannot be realized due to missing assets, keep the section and return empty assetRefs rather than switching to a different composition.`;
+
+export async function claimRun(workerId?: string) {
   const token = randomUUID();
   // Expired leases can be reclaimed; final expired attempt becomes terminal, never stranded.
   await database().begin(async (tx) => {
     const expired =
-      await tx`update agent_runs set status='FAILED',error_class='LEASE_EXHAUSTED',lease_token=null,lease_until=null,completed_at=now() where status='RUNNING' and lease_until<now() and attempt>=max_attempts returning project_id,role,input`;
+      await tx`update agent_runs set status='FAILED',stage='lease-exhausted',error_class='LEASE_EXHAUSTED',lease_token=null,lease_until=null,completed_at=now() where status='RUNNING' and lease_until<now() and attempt>=max_attempts returning project_id,role,input`;
     for (const job of expired) {
       await tx`update projects set status='GENERATION_FAILED' where id=${job.project_id}`;
       if (job.role === 'change') {
@@ -23,7 +114,7 @@ export async function claimRun() {
     }
   });
   const [run] =
-    await database()`update agent_runs set status='RUNNING',attempt=attempt+1,lease_token=${token},lease_until=now()+interval '5 minutes' where id=(select id from agent_runs where ((status='QUEUED' and next_attempt_at<=now()) or (status='RUNNING' and lease_until<now())) and attempt<max_attempts order by created_at for update skip locked limit 1) returning *`;
+    await database()`update agent_runs set status='RUNNING',attempt=attempt+1,lease_token=${token},worker_id=${workerId ?? null},stage='preparing',lease_until=now()+interval '5 minutes' where id=(select id from agent_runs where ((status='QUEUED' and next_attempt_at<=now()) or (status='RUNNING' and lease_until<now())) and attempt<max_attempts order by created_at for update skip locked limit 1) returning *`;
   return run;
 }
 async function snapshot(run: Record<string, any>) {
@@ -50,8 +141,8 @@ async function snapshot(run: Record<string, any>) {
     };
   });
 }
-export async function runOne() {
-  const run = await claimRun();
+export async function runOne(workerId?: string) {
+  const run = await claimRun(workerId);
   if (!run) return false;
   let usage: unknown = {};
   const heartbeat = setInterval(() => {
@@ -61,22 +152,25 @@ export async function runOne() {
   }, 30000);
   try {
     const context = await snapshot(run);
+    const stage = run.role === 'generate' || run.role === 'change' ? 'model-production' : run.role === 'design' || run.role === 'intake' ? 'model-analysis' : run.role === 'publish' ? 'publishing' : 'rendering-delivery';
+    await database()`update agent_runs set stage=${stage} where id=${run.id} and lease_token=${run.lease_token} and status='RUNNING'`;
     let output: unknown;
     if (run.role === 'publish') output = await publishRevision(run);
     else if (run.role === 'delivery') output = await createDelivery(run, context);
     else if (run.role === 'design') {
       assert(context.brief, 'BRIEF_APPROVAL_REQUIRED');
-      const result = await callMimo(DesignChoices, 'creative director', {
-        ...context,
-        task: 'Generate 2–3 substantially different design directions. Use distinct supported styleId values: editorial-minimal, future-tech, young-vibrant. Each choice must use a different layoutMode from editorial, split, centered, staggered, with different composition and product-specific rationale, not only swapped colors. Palette keys: background,surface,text,muted,accent,accentText,border. Typography keys display,body,mono. approvedByClient must be false; factVersion must match current facts.',
-      });
-      usage = result.usage;
+      const attempt = (feedback?: string) =>
+        callMimo(DesignChoices, 'creative director', {
+          ...context,
+          previousDesignFeedback: feedback ?? null,
+          task: feedback ? `${DESIGN_TASK}\n\nPREVIOUS ATTEMPT FEEDBACK (must fix):\n${feedback}` : DESIGN_TASK,
+        });
+      let result = await attempt();
+      usage = { attempt1: result.usage };
+      // New directions must carry a Site Blueprint; legacy stored outputs may lack it.
       assert(
-        new Set(result.output.choices.map((c) => c.styleId)).size ===
-          result.output.choices.length &&
-          new Set(result.output.choices.map((c) => c.layoutMode)).size ===
-            result.output.choices.length,
-        'DUPLICATE_DESIGN_DIRECTION',
+        result.output.choices.every((c) => c.siteBlueprint),
+        'SITE_BLUEPRINT_REQUIRED',
       );
       assert(
         result.output.choices.every(
@@ -84,12 +178,55 @@ export async function runOne() {
         ),
         'INVALID_DESIGN_APPROVAL',
       );
-      output = result.output;
+      let distinct = checkDesignDistinctness(result.output.choices);
+      if (!distinct.pass) {
+        const retry = await attempt(distinct.feedback);
+        usage = { attempt1: (usage as any).attempt1, attempt2: retry.usage };
+        assert(
+          retry.output.choices.every((c) => c.siteBlueprint),
+          'SITE_BLUEPRINT_REQUIRED',
+        );
+        assert(
+          retry.output.choices.every(
+            (x) => !x.approvedByClient && x.factVersion === context.p.fact_version,
+          ),
+          'INVALID_DESIGN_APPROVAL',
+        );
+        result = retry;
+        distinct = checkDesignDistinctness(result.output.choices);
+        assert(distinct.pass, 'DESIGN_DIRECTIONS_NOT_DISTINCT');
+      }
+      // directionId is assigned server-side after schema validation, never taken from model output.
+      output = {
+        choices: result.output.choices.map((choice) => ({
+          ...choice,
+          directionId: randomUUID(),
+        })),
+        distinctness: {
+          distinctDimensions: distinct.distinctDimensions,
+          identicalDimensions: distinct.identicalDimensions,
+        },
+      };
     } else if (run.role === 'intake') {
+      const assetReport = assessAssetQuality({
+        imageCount: context.assets.length,
+        productDescription: run.input.customerInput?.slice(0, 200) || '',
+        customerConfidence: 'unknown',
+      });
       const result = await callMimo(IntakeResult, 'product analyst', {
         ...context,
+        assetQuality: assetReport,
         customerInput: run.input.customerInput,
-        task: 'Propose facts and one critical question. All newly proposed facts must be unverified. Output exactly facts, nextQuestion, draftReady, warnings. Fact IDs and productId values must be valid UUIDs. When no product IDs are supplied, return an empty facts array and use nextQuestion to ask for the missing product information; never invent a product ID.',
+        task: `Propose facts and one critical question. All newly proposed facts must be unverified. Output exactly facts, nextQuestion, draftReady, warnings. Fact IDs and productId values must be valid UUIDs. When no product IDs are supplied, return an empty facts array and use nextQuestion to ask for the missing product information; never invent a product ID.
+
+ASSET QUALITY: ${JSON.stringify(assetReport)}.
+Based on the asset quality assessment:
+- ${assetReport.recommendedStrategy}
+- ${assetReport.followUpQuestions.length} suggested follow-up questions available
+- Customer can skip questions they cannot answer
+- Use nextQuestion to ask the MOST IMPORTANT question first (${assetReport.followUpQuestions[0] || 'product identification'})
+- Distinguish customer facts from image inference and concept assumptions
+- Never present concept/inferred details as confirmed product facts`,
       });
       usage = result.usage;
       assert(
@@ -102,7 +239,7 @@ export async function runOne() {
       const result = await callMimo(Production, 'production team', {
         ...context,
         previousValidationError: run.error_class ?? null,
-        task: `Generate site, posters and copy referencing only supplied verified facts. BUSINESS CONTRACT: site.pages MUST contain exactly one root page whose slug is the EMPTY STRING "", never "home" or "/". Other page slugs must be unique lowercase a-z, digits or hyphens. Every section type must also appear in site.allowedSectionTypes. Include specs information tabs as a real interaction. If more than one product is supplied, the root page MUST include product-grid with factRefs containing the name, description and price facts of every approved product; the catalog must offer associated details, not unrelated standalone pages. Fact refs must be actual supplied approved fact IDs, never keys or invented UUIDs. Asset refs must be actual supplied asset IDs; return [] when none exist. Set all projectId and factVersion values to the supplied project. Use the approved design version for site and all posters. Generate exactly the brief deliverables.posterCount posters and the same number of copy packs, each poster referencing a different existing copy ID. When brief.deliverables.posterFormats is present, preserve its order and set each canvas to portrait=1080x1350 or square=1080x1080; both formats use independent layout, never crop a rendered image. Every poster MUST set qr.placement to "auto_bottom_right_or_left" unless the customer explicitly named a side in their approved brief; a hard-coded corner can collide with the price block and fail layout QA. If a previousValidationError is supplied, correct that invariant; do not repeat the rejected structure.`,
+        task: `Generate site, posters and copy referencing only supplied verified facts. BUSINESS CONTRACT: site.pages MUST contain exactly one root page whose slug is the EMPTY STRING "", never "home" or "/". Other page slugs must be unique lowercase a-z, digits or hyphens. Every section type must also appear in site.allowedSectionTypes. Include specs information tabs as a real interaction. If more than one product is supplied, the root page MUST include product-grid with factRefs containing the name, description and price facts of every approved product; the catalog must offer associated details, not unrelated standalone pages. Fact refs must be actual supplied approved fact IDs, never keys or invented UUIDs. Asset refs must be actual supplied asset IDs; return [] when none exist. Set all projectId and factVersion values to the supplied project. Use the approved design version for site and all posters. Generate exactly the brief deliverables.posterCount posters and the same number of copy packs, each poster referencing a different existing copy ID. When brief.deliverables.posterFormats is present, preserve its order and set each canvas to portrait=1080x1350 or square=1080x1080; both formats use independent layout, never crop a rendered image. Every poster MUST set qr.placement to "auto_bottom_right_or_left" unless the customer explicitly named a side in their approved brief; a hard-coded corner can collide with the price block and fail layout QA. If a previousValidationError is supplied, correct that invariant; do not repeat the rejected structure. ${GENERATE_BLUEPRINT_RULES}`,
       });
       usage = result.usage;
       validateProduction(
@@ -114,6 +251,7 @@ export async function runOne() {
         context.e.max_posters,
         context.brief.deliverables,
       );
+      validateBlueprintAdherence(result.output, context.design);
       assert(
         result.output.site.designSystemVersion === context.design.version,
         'DESIGN_VERSION_MISMATCH',
@@ -190,7 +328,7 @@ export async function runOne() {
         if (value.requiresFactApproval)
           await tx`update project_entitlements set remaining_revisions=remaining_revisions+1 where order_id=${p.service_order_id}`;
       }
-      await tx`update agent_runs set status='SUCCEEDED',error_class=null,output=${tx.json(output as any)},usage=${tx.json(usage as any)},lease_token=null,lease_until=null,completed_at=now() where id=${run.id}`;
+      await tx`update agent_runs set status='SUCCEEDED',stage='completed',error_class=null,output=${tx.json(output as any)},usage=${tx.json(usage as any)},lease_token=null,lease_until=null,completed_at=now() where id=${run.id}`;
     });
   } catch (error) {
     const code =
@@ -208,6 +346,8 @@ export async function runOne() {
         'MIMO_NOT_CONFIGURED',
         'DESIGN_FACT_VERSION_CHANGED',
         'FACT_APPROVAL_REQUIRED',
+        'DESIGN_DIRECTIONS_NOT_DISTINCT',
+        'SITE_BLUEPRINT_REQUIRED',
       ].includes(code);
     console.error(
       JSON.stringify({
@@ -224,7 +364,7 @@ export async function runOne() {
     );
     await database().begin(async (tx) => {
       const rows =
-        await tx`update agent_runs set status=${terminal ? 'FAILED' : 'QUEUED'},error_class=${code},usage=${tx.json(usage as any)},lease_token=null,lease_until=null,completed_at=${terminal ? new Date() : null},next_attempt_at=now()+${run.attempt * 10}*interval '1 second' where id=${run.id} and lease_token=${run.lease_token} returning id`;
+        await tx`update agent_runs set status=${terminal ? 'FAILED' : 'QUEUED'},stage=${terminal ? 'failed' : 'retry-wait'},error_class=${code},usage=${tx.json(usage as any)},lease_token=null,lease_until=null,completed_at=${terminal ? new Date() : null},next_attempt_at=now()+${run.attempt * 10}*interval '1 second' where id=${run.id} and lease_token=${run.lease_token} returning id`;
       if (rows.length && terminal) {
         await tx`update projects set status='GENERATION_FAILED' where id=${run.project_id}`;
         if (run.role === 'change') {

@@ -7,12 +7,17 @@ SELECT pg_advisory_xact_lock(601106);
 DO $oneboss_bootstrap$
 BEGIN
   IF to_regclass('public.oneboss_migrations') IS NOT NULL THEN
-    IF (SELECT count(*) FROM public.oneboss_migrations) = 5
+    IF (SELECT count(*) FROM public.oneboss_migrations) = 10
       AND (SELECT count(*) FROM public.oneboss_migrations WHERE (name,hash) IN (('202611060001_core.sql', 'a5f7aa3f082199eff29f34dfbc9b57b5a7076fc8521796bb22b85d194b25022b'),
 ('202611060002_storage.sql', '25b1e899076bc41ac08ffa69a93889f69bc74543de71ddafe33369e065bfaf4d'),
 ('202611070001_wechat_pay.sql', '2226c42a85f681abe10f73b8df62431cd9fa383d51757afb04634a547355c638'),
 ('202611070002_service_pricing.sql', 'c6896260fd71cc32cca8c90c59810322ed4d64cfe3e6dcc403f5985559799862'),
-('202611070003_manual_payment_reports.sql', 'd634e669f15daa8e1bebc998c8c5aa630743ef27856398ed06fa250dbe425620'))) = 5
+('202611070003_manual_payment_reports.sql', 'd634e669f15daa8e1bebc998c8c5aa630743ef27856398ed06fa250dbe425620'),
+('202611080001_admin_audit.sql', '3af67f138592645a5b08d3c15b84e0ff159d7b34312f11592ca3776a925d7f73'),
+('202611080002_manual_channels_and_addons.sql', 'e68c283086f57a3bb411d08306dd1603ea736a021497a2665b92aab2ad433b28'),
+('202611080003_refund_confirmation_time.sql', '5384ae2de360f5766dcaf64c6f675663db7d0278e2d053763cbd7ca5afb4d8b1'),
+('202611080004_task_observability.sql', 'c39e97d9b2735211769792fc42edec74d643eb15632f43ccb94869623ce85f21'),
+('202611080005_admin_roles_and_audit.sql', 'e351c0afaa07ab22ad9a185944e203e53ec7989ddfe42d4f3937548e262b7246'))) = 10
       AND to_regclass('public.organizations') IS NOT NULL
       AND to_regclass('public.deliveries') IS NOT NULL THEN
       RAISE NOTICE 'OneBoss migrations already applied; existing data retained';
@@ -150,6 +155,103 @@ create policy member_read on manual_payment_reports for select to authenticated 
 grant select on manual_payment_reports to authenticated;
 create index manual_payment_reports_order on manual_payment_reports(order_id,created_at desc);
 
+
+-- Migration: 202611080001_admin_audit.sql; sha256: 3af67f138592645a5b08d3c15b84e0ff159d7b34312f11592ca3776a925d7f73
+-- 管理员操作审计。
+-- 只记录管理员的敏感动作（收款核验、退款核验），不记录客户请求。
+create table if not exists admin_audit_logs(
+  id uuid primary key default gen_random_uuid(),
+  actor_user_id uuid not null,
+  actor_email text,
+  action text not null,
+  target text not null,
+  result text not null check(result in ('success','failure')),
+  reason text,
+  details jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists admin_audit_logs_created on admin_audit_logs(created_at desc);
+
+alter table admin_audit_logs enable row level security;
+revoke all on admin_audit_logs from anon, authenticated;
+
+
+-- Migration: 202611080002_manual_channels_and_addons.sql; sha256: e68c283086f57a3bb411d08306dd1603ea736a021497a2665b92aab2ad433b28
+-- Preserve all historical quotes/orders; new catalog applies only to new quotes.
+update service_addons set name='增加产品',price_minor=99 where code='extra-product';
+update service_addons set name='增加海报',price_minor=99 where code='extra-poster';
+update service_addons set name='增加修改',price_minor=49 where code='extra-revision';
+alter table service_orders add column payment_channel text check(payment_channel in ('wechat','alipay'));
+alter table payment_attempts add column payment_channel text check(payment_channel in ('wechat','alipay'));
+update payment_attempts set payment_channel='wechat' where provider='manual_verified';
+update service_orders o set payment_channel='wechat' where exists(select 1 from payment_attempts a where a.order_id=o.id and a.provider='manual_verified');
+-- Fail safely on existing duplicates. Operator must review; never delete or merge financial facts.
+do $$ begin
+ if exists(select 1 from payment_events group by order_id having count(*)>1) then
+  raise exception 'PAYMENT_EVENT_DUPLICATES_REQUIRE_OWNER_REVIEW';
+ end if;
+end $$;
+create unique index one_payment_fact_per_order on payment_events(order_id);
+
+
+-- Migration: 202611080003_refund_confirmation_time.sql; sha256: 5384ae2de360f5766dcaf64c6f675663db7d0278e2d053763cbd7ca5afb4d8b1
+-- Historical confirmed refunds have no provable confirmation timestamp.
+-- Leave NULL and report as undated; never substitute request time.
+alter table refunds add column if not exists confirmed_at timestamptz;
+create index if not exists refunds_confirmed_at on refunds(confirmed_at) where status='CONFIRMED';
+
+
+-- Migration: 202611080004_task_observability.sql; sha256: c39e97d9b2735211769792fc42edec74d643eb15632f43ccb94869623ce85f21
+-- Real task attribution; combined production remains one task.
+alter table agent_runs add column employee_key text;
+alter table agent_runs add column stage text;
+alter table agent_runs add column worker_id uuid;
+update agent_runs set employee_key=case role when 'intake' then 'product_analyst' when 'design' then 'creative_director' when 'generate' then 'production_team' when 'change' then 'production_team' when 'publish' then 'delivery_specialist' when 'delivery' then 'delivery_specialist' else 'unmapped' end;
+create table task_events (
+ id bigint generated always as identity primary key,
+ org_id uuid not null references organizations(id) on delete cascade,
+ run_id uuid not null references agent_runs(id) on delete cascade,
+ status text not null, stage text, attempt integer not null,
+ error_class text, created_at timestamptz not null default clock_timestamp()
+);
+create index task_events_run on task_events(run_id,id);
+alter table task_events enable row level security;
+revoke all on task_events from anon,authenticated;
+create table worker_instances (
+ id uuid primary key, version text not null, started_at timestamptz not null default now(),
+ last_seen_at timestamptz not null default now(), stopped_at timestamptz,
+ current_run_id uuid references agent_runs(id) on delete set null
+);
+alter table worker_instances enable row level security;
+revoke all on worker_instances from anon,authenticated;
+create function record_task_transition() returns trigger language plpgsql as $$
+begin
+ new.employee_key=case new.role when 'intake' then 'product_analyst' when 'design' then 'creative_director' when 'generate' then 'production_team' when 'change' then 'production_team' when 'publish' then 'delivery_specialist' when 'delivery' then 'delivery_specialist' else 'unmapped' end;
+ if TG_OP='INSERT' then
+   insert into task_events(org_id,run_id,status,stage,attempt,error_class) values(new.org_id,new.id,new.status,new.stage,new.attempt,new.error_class);
+ elsif new.status is distinct from old.status or new.stage is distinct from old.stage or new.attempt is distinct from old.attempt then
+   insert into task_events(org_id,run_id,status,stage,attempt,error_class) values(new.org_id,new.id,new.status,new.stage,new.attempt,new.error_class);
+ end if;
+ return new;
+end $$;
+-- AFTER trigger cannot assign NEW; use a separate BEFORE attribution trigger.
+create function attribute_task_employee() returns trigger language plpgsql as $$ begin
+ new.employee_key=case new.role when 'intake' then 'product_analyst' when 'design' then 'creative_director' when 'generate' then 'production_team' when 'change' then 'production_team' when 'publish' then 'delivery_specialist' when 'delivery' then 'delivery_specialist' else 'unmapped' end; return new; end $$;
+create trigger attribute_task_employee before insert or update on agent_runs for each row execute function attribute_task_employee();
+create trigger record_task_transition after insert or update on agent_runs for each row execute function record_task_transition();
+create function task_events_append_only() returns trigger language plpgsql as $$ begin
+ if TG_OP='DELETE' and pg_trigger_depth()>1 then return old; end if;
+ raise exception 'TASK_EVENTS_APPEND_ONLY'; end $$;
+create trigger task_events_append_only before update or delete on task_events for each row execute function task_events_append_only();
+
+
+-- Migration: 202611080005_admin_roles_and_audit.sql; sha256: e351c0afaa07ab22ad9a185944e203e53ec7989ddfe42d4f3937548e262b7246
+-- Preserve existing authorized administrators as owners. No new administrators are granted.
+alter table platform_admins add column role text not null default 'owner' check(role in ('owner','finance','operations','reviewer'));
+alter table admin_audit_logs add column request_id text;
+alter table admin_audit_logs add column target_id uuid;
+
   CREATE TABLE public.oneboss_migrations (
     name text PRIMARY KEY, hash text NOT NULL,
     applied_at timestamptz NOT NULL DEFAULT now()
@@ -160,7 +262,12 @@ create index manual_payment_reports_order on manual_payment_reports(order_id,cre
 ('202611060002_storage.sql', '25b1e899076bc41ac08ffa69a93889f69bc74543de71ddafe33369e065bfaf4d'),
 ('202611070001_wechat_pay.sql', '2226c42a85f681abe10f73b8df62431cd9fa383d51757afb04634a547355c638'),
 ('202611070002_service_pricing.sql', 'c6896260fd71cc32cca8c90c59810322ed4d64cfe3e6dcc403f5985559799862'),
-('202611070003_manual_payment_reports.sql', 'd634e669f15daa8e1bebc998c8c5aa630743ef27856398ed06fa250dbe425620');
+('202611070003_manual_payment_reports.sql', 'd634e669f15daa8e1bebc998c8c5aa630743ef27856398ed06fa250dbe425620'),
+('202611080001_admin_audit.sql', '3af67f138592645a5b08d3c15b84e0ff159d7b34312f11592ca3776a925d7f73'),
+('202611080002_manual_channels_and_addons.sql', 'e68c283086f57a3bb411d08306dd1603ea736a021497a2665b92aab2ad433b28'),
+('202611080003_refund_confirmation_time.sql', '5384ae2de360f5766dcaf64c6f675663db7d0278e2d053763cbd7ca5afb4d8b1'),
+('202611080004_task_observability.sql', 'c39e97d9b2735211769792fc42edec74d643eb15632f43ccb94869623ce85f21'),
+('202611080005_admin_roles_and_audit.sql', 'e351c0afaa07ab22ad9a185944e203e53ec7989ddfe42d4f3937548e262b7246');
 END
 $oneboss_bootstrap$;
 NOTIFY pgrst, 'reload schema';

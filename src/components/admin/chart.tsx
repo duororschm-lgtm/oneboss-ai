@@ -17,20 +17,21 @@ export function RevenueChart({ points }: { points: RevenuePoint[] }) {
 
   const geometry = useMemo(() => {
     if (!points.length) return null;
-    const max = Math.max(1, ...points.map((p) => p.confirmedMinor));
+    const max = Math.max(1, ...points.flatMap((p) => [p.confirmedMinor,p.netMinor]));
+    const min = Math.min(0, ...points.map((p) => p.netMinor));
     const x = (index: number) =>
       pad.left + (points.length === 1 ? plotWidth / 2 : (index / (points.length - 1)) * plotWidth);
-    const y = (value: number) => pad.top + plotHeight - (value / max) * plotHeight;
+    const y = (value: number) => pad.top + plotHeight - ((value - min) / (max - min)) * plotHeight;
 
     const line = (key: 'confirmedMinor' | 'netMinor') =>
       points.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p[key]).toFixed(1)}`).join(' ');
 
     const area = `${line('confirmedMinor')} L${x(points.length - 1).toFixed(1)},${(
-      pad.top + plotHeight
-    ).toFixed(1)} L${x(0).toFixed(1)},${(pad.top + plotHeight).toFixed(1)} Z`;
+      y(0)
+    ).toFixed(1)} L${x(0).toFixed(1)},${y(0).toFixed(1)} Z`;
 
     const ticks = Array.from({ length: 4 }, (_, i) => {
-      const value = (max / 3) * i;
+      const value = min + ((max - min) / 3) * i;
       return { value, y: y(value) };
     });
 

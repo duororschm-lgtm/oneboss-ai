@@ -51,6 +51,70 @@ export const Brief = z
     approval: z.enum(['pending', 'approved', 'changes_requested']),
   })
   .strict();
+export const SectionTypes = [
+  'hero',
+  'gallery',
+  'features',
+  'specs',
+  'product-grid',
+  'brand',
+  'story',
+  'contact',
+  'product-3d',
+] as const;
+// Section layout primitives shared by Site Blueprint and production SiteSpec.
+// All fields optional so legacy records and minimal model output stay valid.
+export const SectionLayout = z
+  .object({
+    variant: z
+      .string()
+      .regex(/^[a-z0-9-]{1,60}$/)
+      .optional(),
+    columns: z.number().int().min(1).max(4).optional(),
+    alignment: z.enum(['left', 'center', 'right']).optional(),
+    width: z.enum(['narrow', 'standard', 'wide', 'full']).optional(),
+    emphasis: z.enum(['image-led', 'text-led', 'balanced']).optional(),
+    background: z.enum(['plain', 'surface', 'inverted', 'accent']).optional(),
+    imageRatio: z.enum(['square', 'portrait', 'landscape', 'wide']).optional(),
+  })
+  .strict();
+export const SiteBlueprint = z
+  .object({
+    pages: z
+      .array(
+        z
+          .object({
+            slug: z
+              .string()
+              .regex(/^[a-z0-9-]*$/)
+              .max(80),
+            title: z.string().max(150),
+            sections: z
+              .array(
+                z
+                  .object({
+                    type: z.enum(SectionTypes),
+                    layout: SectionLayout,
+                    // Semantic keys resolved server-side into real fact IDs. Never UUIDs from the model.
+                    factKeys: z.array(z.string().min(1).max(100)).max(20).optional(),
+                    assetRoles: z.array(z.string().min(1).max(50)).max(10).optional(),
+                    interactionIds: z.array(z.string().min(1).max(100)).max(5).optional(),
+                    motionId: z.string().max(100).optional(),
+                    note: z.string().max(300).optional(),
+                  })
+                  .strict(),
+              )
+              .min(1)
+              .max(30),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(10),
+    contentWidth: z.enum(['narrow', 'standard', 'wide', 'full']).optional(),
+    visualRhythm: z.enum(['calm', 'layered', 'punchy']).optional(),
+  })
+  .strict();
 export const DesignSystem = z
   .object({
     version: Revision,
@@ -64,32 +128,44 @@ export const DesignSystem = z
     motionPreset: z.enum(['none', 'subtle', 'energetic']),
     approvedByClient: z.boolean(),
     factVersion: Revision,
+    // --- Design DNA extension (all optional for legacy compatibility) ---
+    directionId: z.uuid().optional(),
+    name: z.string().max(100).optional(),
+    tagline: z.string().max(300).optional(),
+    visualConcept: z.string().max(1000).optional(),
+    visualKeywords: z.array(z.string().max(50)).max(10).optional(),
+    density: z.enum(['airy', 'balanced', 'dense']).optional(),
+    imageTreatment: z.enum(['full-bleed', 'framed', 'collage', 'minimal']).optional(),
+    heroComposition: z
+      .enum(['split-editorial', 'full-bleed', 'centered-stage', 'type-led', 'asymmetric'])
+      .optional(),
+    pageGrid: z
+      .object({
+        contentWidth: z.enum(['narrow', 'standard', 'wide', 'full']).optional(),
+        columns: z.number().int().min(4).max(12).optional(),
+        gutter: z.number().min(0).max(64).optional(),
+      })
+      .strict()
+      .optional(),
+    // --- V4 Design DNA enhancements ---
+    secondaryAccent: z
+      .string()
+      .regex(/^#[a-fA-F0-9]{6}$/)
+      .optional(),
+    gradientStops: z.array(z.string().regex(/^#[a-fA-F0-9]{6}$/)).min(2).max(4).optional(),
+    gridStyle: z.enum(['editorial', 'asymmetric', 'modular', 'full-bleed']).optional(),
+    visualMotif: z
+      .enum(['clean-lines', 'organic-shapes', 'geometric-grid', 'soft-glow', 'bold-blocks', 'fine-details'])
+      .optional(),
+    motionLanguage: z.enum(['calm', 'expressive', 'energetic']).optional(),
+    siteBlueprint: SiteBlueprint.optional(),
   })
   .strict();
-export const SectionTypes = [
-  'hero',
-  'gallery',
-  'features',
-  'specs',
-  'product-grid',
-  'brand',
-  'story',
-  'contact',
-] as const;
 // Props deliberately contain presentation primitives only. Customer text/URLs come from references.
 export const Section = z
   .object({
     type: z.enum(SectionTypes),
-    props: z
-      .object({
-        variant: z
-          .string()
-          .regex(/^[a-z0-9-]{1,60}$/)
-          .optional(),
-        columns: z.number().int().min(1).max(4).optional(),
-        alignment: z.enum(['left', 'center', 'right']).optional(),
-      })
-      .strict(),
+    props: SectionLayout,
     factRefs: z.array(Id),
     assetRefs: z.array(Id),
   })
@@ -244,3 +320,105 @@ export type FactType = z.infer<typeof Fact>;
 export type Site = z.infer<typeof SiteSpec>;
 export type Poster = z.infer<typeof PosterSpec>;
 export type ProductionType = z.infer<typeof Production>;
+export type SectionLayoutType = z.infer<typeof SectionLayout>;
+export type SiteBlueprintType = z.infer<typeof SiteBlueprint>;
+export type DesignSystemType = z.infer<typeof DesignSystem>;
+
+// --- 3D Model Trust & Exploded View ---
+export const ModelTrust = z.enum([
+  'appearance_3d',
+  'conceptual_exploded',
+  'verified_exploded',
+  'static_fallback',
+]);
+export type ModelTrustType = z.infer<typeof ModelTrust>;
+
+export const ModelAssetRecord = z
+  .object({
+    id: Id,
+    projectId: Id,
+    factVersion: Revision,
+    source: z.enum(['customer', 'generated-provider', 'procedural']),
+    modelTrust: ModelTrust,
+    storagePath: z.string().min(1).max(500),
+    contentHash: z.string().min(1).max(128),
+    approved: z.boolean(),
+    providerTaskId: z.string().max(200).optional(),
+    licenseStatus: z.enum(['customer_authorized', 'provider_generated', 'procedural_concept']),
+    createdAt: z.iso.datetime(),
+  })
+  .strict();
+export type ModelAssetRecordType = z.infer<typeof ModelAssetRecord>;
+
+export const ExplodedViewSpec = z
+  .object({
+    modelAssetId: Id,
+    mode: z.enum(['conceptual_exploded', 'verified_exploded']),
+    parts: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1).max(100),
+            nodeName: z.string().min(1).max(200),
+            label: z.string().min(1).max(100),
+            factRefs: z.array(Id).max(20),
+            explodeOffset: z.tuple([z.number(), z.number(), z.number()]),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(30),
+    camera: z
+      .object({
+        position: z.tuple([z.number(), z.number(), z.number()]),
+        target: z.tuple([z.number(), z.number(), z.number()]),
+      })
+      .strict(),
+  })
+  .strict();
+export type ExplodedViewSpecType = z.infer<typeof ExplodedViewSpec>;
+
+// --- V4 Interaction & Motion Schemas ---
+export const InteractionKind = z.enum([
+  'gallery-carousel',
+  'image-zoom',
+  'tabs',
+  'accordion',
+  'product-hotspots',
+  'product-compare',
+  'image-before-after',
+  'copy-contact',
+  'anchor-navigation',
+]);
+export type InteractionKindType = z.infer<typeof InteractionKind>;
+
+export const InteractionSpec = z
+  .object({
+    id: z.string().min(1).max(100),
+    kind: InteractionKind,
+    options: z.record(z.string(), z.union([z.string().max(200), z.number(), z.boolean()])),
+  })
+  .strict();
+export type InteractionSpecType = z.infer<typeof InteractionSpec>;
+
+export const MotionKind = z.enum([
+  'entrance-reveal',
+  'stagger-text',
+  'scroll-reveal',
+  'sticky-story',
+  'parallax-light',
+  'hover-feedback',
+  'section-transition',
+]);
+export type MotionKindType = z.infer<typeof MotionKind>;
+
+export const MotionSpec = z
+  .object({
+    id: z.string().min(1).max(100),
+    kind: MotionKind,
+    intensity: z.enum(['low', 'medium', 'high']),
+    durationMs: z.number().int().min(100).max(3000),
+    delayMs: z.number().int().min(0).max(2000).optional(),
+  })
+  .strict();
+export type MotionSpecType = z.infer<typeof MotionSpec>;

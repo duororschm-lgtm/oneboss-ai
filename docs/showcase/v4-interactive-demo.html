@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OneBoss V4 — AI 客制化互动营销网页 Demo</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #0a0a0a; color: #eee; overflow-x: hidden; }
+
+  /* ===== Top nav ===== */
+  .demo-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; justify-content: center; gap: 8px;
+    padding: 12px 16px;
+    background: rgba(10,10,10,0.85); backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .demo-nav button {
+    padding: 10px 22px; border-radius: 12px;
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08);
+    color: #999; cursor: pointer; font-size: 13px; font-weight: 600;
+    transition: all 0.3s; font-family: inherit;
+  }
+  .demo-nav button:hover { background: rgba(255,255,255,0.12); color: #fff; }
+  .demo-nav button.active { color: #fff; border-color: transparent; }
+  .demo-nav button:nth-child(1).active { background: linear-gradient(135deg,#ff6b35,#ff3366); }
+  .demo-nav button:nth-child(2).active { background: linear-gradient(135deg,#2d1b4e,#6b3fa0); }
+  .demo-nav button:nth-child(3).active { background: linear-gradient(135deg,#0a3d2a,#1a8a5e); }
+
+  .direction { display: none; padding-top: 60px; }
+  .direction.visible { display: block; }
+
+  /* ===== Direction labels ===== */
+  .dir-label {
+    text-align: center; padding: 32px 20px 16px;
+  }
+  .dir-label h2 { font-size: 24px; margin-bottom: 6px; }
+  .dir-label p { color: #888; font-size: 13px; max-width: 500px; margin: 0 auto; }
+  .dir-tags { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+  .dir-tags span {
+    padding: 3px 12px; border-radius: 20px;
+    font-size: 11px; background: rgba(255,255,255,0.06); color: #999; border: 1px solid rgba(255,255,255,0.08);
+  }
+
+  /* ============================
+     DIRECTION A: Chromatic Pop
+     ============================ */
+  .dir-a .hero {
+    min-height: 85vh;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    text-align: center;
+    background: linear-gradient(135deg, #ff6b35 0%, #ff3366 50%, #ffaa33 100%);
+    position: relative; overflow: hidden;
+    padding: 80px 24px;
+  }
+  .dir-a .hero::before {
+    content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 60%);
+    animation: floatOrb 8s ease-in-out infinite;
+  }
+  @keyframes floatOrb {
+    0%, 100% { transform: translate(0, 0); }
+    50% { transform: translate(30px, -30px); }
+  }
+  .dir-a .hero h1 {
+    font-family: "Arial Black", sans-serif;
+    font-size: clamp(3rem, 10vw, 7rem);
+    line-height: 0.95;
+    color: #fff;
+    letter-spacing: -0.03em;
+    position: relative; z-index: 1;
+    animation: entranceFadeUp 0.8s ease-out both;
+  }
+  .dir-a .hero .sub {
+    font-size: 18px; color: rgba(255,255,255,0.85);
+    margin-top: 20px; max-width: 480px;
+    animation: entranceFadeUp 0.7s ease-out both 0.3s;
+  }
+  .dir-a .hero .cta-row {
+    display: flex; gap: 14px; margin-top: 32px; flex-wrap: wrap; justify-content: center;
+    animation: entranceFadeUp 0.6s ease-out both 0.5s;
+    position: relative; z-index: 1;
+  }
+  .dir-a .hero .price-tag {
+    position: absolute; top: 80px; right: 20px;
+    background: #fff; color: #ff3366;
+    width: 90px; height: 90px; border-radius: 50%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-weight: 900; font-size: 18px; transform: rotate(12deg);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    animation: entranceScaleIn 0.6s ease-out both 0.8s;
+    z-index: 2;
+  }
+  .dir-a .hero .price-tag small { font-size: 11px; font-weight: 400; }
+
+  .dir-a .gallery-strip {
+    display: flex; overflow-x: auto; gap: 16px;
+    padding: 40px 24px; scroll-snap-type: x mandatory;
+    background: #fff5f0;
+  }
+  .dir-a .gallery-strip::-webkit-scrollbar { height: 6px; }
+  .dir-a .gallery-strip::-webkit-scrollbar-thumb { background: #ff6b35; border-radius: 3px; }
+  .dir-a .gallery-card {
+    flex: 0 0 280px; scroll-snap-align: center;
+    border-radius: 20px; overflow: hidden;
+    background: #fff;
+    box-shadow: 0 8px 32px rgba(255,107,53,0.15);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    cursor: pointer;
+  }
+  .dir-a .gallery-card:hover {
+    transform: translateY(-8px) scale(1.02);
+    box-shadow: 0 16px 48px rgba(255,107,53,0.25);
+  }
+  .dir-a .gallery-card .img-area {
+    height: 220px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 64px;
+  }
+  .dir-a .gallery-card .info { padding: 16px 20px; }
+  .dir-a .gallery-card .info h3 { color: #222; font-size: 16px; }
+  .dir-a .gallery-card .info p { color: #999; font-size: 13px; margin-top: 4px; }
+
+  .dir-a .flavor-section {
+    padding: 60px 24px;
+    background: linear-gradient(180deg, #fff5f0 0%, #fff 100%);
+    text-align: center;
+  }
+  .dir-a .flavor-tabs {
+    display: flex; justify-content: center; gap: 10px;
+    margin: 24px 0; flex-wrap: wrap;
+  }
+  .dir-a .flavor-tab {
+    padding: 12px 28px; border-radius: 50px; border: 2px solid #ff6b35;
+    background: transparent; color: #ff6b35; cursor: pointer;
+    font-size: 15px; font-weight: 600; transition: all 0.3s; font-family: inherit;
+  }
+  .dir-a .flavor-tab:hover { transform: translateY(-2px); }
+  .dir-a .flavor-tab.active { background: #ff6b35; color: #fff; }
+  .dir-a .flavor-content {
+    max-width: 600px; margin: 0 auto;
+    padding: 32px; border-radius: 24px;
+    background: #fff; box-shadow: 0 8px 32px rgba(0,0,0,0.08);
+    min-height: 160px;
+  }
+  .dir-a .flavor-content h3 { color: #222; font-size: 22px; margin-bottom: 12px; }
+  .dir-a .flavor-content p { color: #666; line-height: 1.8; font-size: 15px; }
+
+  .dir-a .cta-section {
+    padding: 80px 24px;
+    background: linear-gradient(135deg, #ff3366, #ff6b35);
+    text-align: center;
+  }
+  .dir-a .cta-section h2 { color: #fff; font-family: "Arial Black", sans-serif; font-size: 32px; }
+  .dir-a .cta-section p { color: rgba(255,255,255,0.8); margin: 12px 0 28px; }
+  .btn-pop {
+    padding: 16px 36px; border-radius: 50px; border: none;
+    background: #fff; color: #ff3366;
+    font-size: 16px; font-weight: 700; cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    font-family: inherit;
+  }
+  .btn-pop:hover { transform: translateY(-3px); box-shadow: 0 12px 32px rgba(0,0,0,0.2); }
+  .btn-pop:active { transform: translateY(0); }
+  .btn-pop.copied { background: #22c55e; color: #fff; }
+
+  /* ============================
+     DIRECTION B: Editorial Motion
+     ============================ */
+  .dir-b .hero {
+    min-height: 85vh;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    background: #1a0f2e;
+    position: relative; overflow: hidden;
+  }
+  .dir-b .hero::after {
+    content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 40%;
+    background: linear-gradient(transparent, #1a0f2e);
+  }
+  .dir-b .hero-text {
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 80px 48px;
+    position: relative; z-index: 1;
+  }
+  .dir-b .hero-text .label {
+    font-size: 12px; letter-spacing: 0.3em; text-transform: uppercase;
+    color: #c084fc; margin-bottom: 16px;
+    animation: entranceFadeUp 0.6s ease-out both 0.1s;
+  }
+  .dir-b .hero-text h1 {
+    font-family: Georgia, "Songti SC", serif;
+    font-size: clamp(2.2rem, 5vw, 4rem);
+    line-height: 1.15;
+    color: #f0e6ff;
+    animation: entranceFadeUp 0.8s ease-out both 0.3s;
+  }
+  .dir-b .hero-text h1 em { color: #c084fc; font-style: normal; }
+  .dir-b .hero-text p {
+    color: rgba(240,230,255,0.6); margin-top: 20px; font-size: 16px; line-height: 1.8;
+    max-width: 420px;
+    animation: entranceFadeUp 0.7s ease-out both 0.5s;
+  }
+  .dir-b .hero-visual {
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+    animation: entranceScaleIn 1s ease-out both 0.4s;
+  }
+  .dir-b .hero-visual .cup {
+    width: 320px; height: 320px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #6b3fa0, #2d1b4e);
+    box-shadow: 0 0 80px rgba(107,63,160,0.4), inset 0 0 40px rgba(0,0,0,0.3);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 80px;
+  }
+  .dir-b .hero-badge {
+    position: absolute; bottom: 40px; left: 48px;
+    display: flex; gap: 24px;
+    z-index: 2;
+  }
+  .dir-b .hero-badge .item {
+    animation: entranceFadeUp 0.5s ease-out both 0.8s;
+  }
+  .dir-b .hero-badge .item:nth-child(2) { animation-delay: 0.95s; }
+  .dir-b .hero-badge .num {
+    font-family: Georgia, serif; font-size: 28px; color: #c084fc; font-weight: 700;
+  }
+  .dir-b .hero-badge .lbl { font-size: 11px; color: rgba(240,230,255,0.5); }
+
+  .dir-b .story-section {
+    padding: 80px 24px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 40px;
+    max-width: 1100px; margin: 0 auto;
+    min-height: 60vh;
+  }
+  .dir-b .story-visual {
+    position: sticky; top: 100px;
+    height: 400px; border-radius: 24px;
+    background: linear-gradient(135deg, #2d1b4e, #6b3fa0);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 80px;
+  }
+  .dir-b .story-copy .story-step {
+    padding: 32px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .dir-b .story-copy .story-step h3 {
+    font-family: Georgia, serif; color: #e0d0ff; font-size: 22px;
+    margin-bottom: 8px;
+  }
+  .dir-b .story-copy .story-step p { color: rgba(240,230,255,0.5); line-height: 1.8; font-size: 15px; }
+  .dir-b .story-step {
+    opacity: 0; transform: translateY(20px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+  .dir-b .story-step.visible { opacity: 1; transform: translateY(0); }
+
+  .dir-b .specs-tabs {
+    padding: 60px 24px; background: #14092a;
+  }
+  .dir-b .specs-tabs .inner { max-width: 800px; margin: 0 auto; }
+  .dir-b .tab-bar {
+    display: flex; gap: 4px; margin-bottom: 0;
+    border-bottom: 2px solid rgba(255,255,255,0.08);
+  }
+  .dir-b .tab-bar button {
+    padding: 14px 28px; background: none; border: none;
+    color: rgba(240,230,255,0.4); cursor: pointer;
+    font-size: 15px; border-bottom: 2px solid transparent;
+    margin-bottom: -2px; transition: all 0.3s; font-family: inherit;
+  }
+  .dir-b .tab-bar button:hover { color: rgba(240,230,255,0.7); }
+  .dir-b .tab-bar button.active { color: #c084fc; border-bottom-color: #c084fc; font-weight: 600; }
+  .dir-b .tab-content {
+    padding: 32px 0; min-height: 160px;
+    animation: entranceFadeIn 0.3s ease-out;
+  }
+  .dir-b .tab-content h3 { color: #e0d0ff; font-family: Georgia, serif; font-size: 20px; margin-bottom: 12px; }
+  .dir-b .tab-content p { color: rgba(240,230,255,0.5); line-height: 1.8; }
+  .dir-b .tab-content .spec-row {
+    display: flex; justify-content: space-between; padding: 12px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .dir-b .tab-content .spec-row .k { color: rgba(240,230,255,0.4); }
+  .dir-b .tab-content .spec-row .v { color: #e0d0ff; font-weight: 600; }
+
+  .dir-b .cta-section {
+    padding: 80px 24px;
+    text-align: center;
+    background: linear-gradient(180deg, #1a0f2e 0%, #2d1b4e 100%);
+    position: relative;
+  }
+  .dir-b .cta-section::before {
+    content: ''; position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 400px; height: 400px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(192,132,252,0.15), transparent);
+  }
+  .dir-b .cta-section h2 {
+    font-family: Georgia, serif; color: #f0e6ff; font-size: 32px;
+    position: relative;
+  }
+  .dir-b .cta-section p { color: rgba(240,230,255,0.5); margin: 12px 0 28px; position: relative; }
+  .btn-editorial {
+    padding: 16px 36px; border-radius: 4px; border: 1px solid #c084fc;
+    background: transparent; color: #c084fc;
+    font-size: 15px; font-weight: 600; cursor: pointer;
+    transition: all 0.3s; font-family: inherit;
+    position: relative;
+  }
+  .btn-editorial:hover { background: #c084fc; color: #1a0f2e; transform: translateY(-2px); }
+  .btn-editorial.copied { background: #22c55e; color: #fff; border-color: #22c55e; }
+
+  /* ============================
+     DIRECTION C: Neo-Tech Glow
+     ============================ */
+  .dir-c .hero {
+    min-height: 85vh;
+    background: #080c10;
+    position: relative; overflow: hidden;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    text-align: center;
+    padding: 80px 24px;
+  }
+  .dir-c .hero::before {
+    content: ''; position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(57,255,136,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(57,255,136,0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+  }
+  .dir-c .hero-glow {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 500px; height: 500px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(57,255,136,0.12) 0%, transparent 70%);
+    animation: pulseGlow 4s ease-in-out infinite;
+  }
+  @keyframes pulseGlow {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.6; }
+    50% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
+  }
+  .dir-c .hero .label {
+    font-family: monospace; font-size: 12px; letter-spacing: 0.2em;
+    color: #39ff88; margin-bottom: 16px;
+    animation: entranceFadeUp 0.6s ease-out both 0.1s;
+    position: relative; z-index: 1;
+  }
+  .dir-c .hero h1 {
+    font-family: "Cascadia Mono", "JetBrains Mono", monospace;
+    font-size: clamp(2.2rem, 6vw, 4.5rem);
+    color: #e0ffe8;
+    line-height: 1.1;
+    position: relative; z-index: 1;
+    animation: entranceFadeUp 0.8s ease-out both 0.3s;
+  }
+  .dir-c .hero h1 .accent { color: #39ff88; }
+  .dir-c .hero p {
+    color: rgba(224,255,232,0.5); margin-top: 16px; max-width: 500px;
+    font-family: monospace; font-size: 14px; line-height: 1.8;
+    position: relative; z-index: 1;
+    animation: entranceFadeUp 0.7s ease-out both 0.5s;
+  }
+  .dir-c .hero .data-row {
+    display: flex; gap: 32px; margin-top: 32px;
+    position: relative; z-index: 1;
+  }
+  .dir-c .hero .data-item {
+    text-align: center;
+    animation: entranceFadeUp 0.5s ease-out both 0.7s;
+  }
+  .dir-c .hero .data-item:nth-child(2) { animation-delay: 0.85s; }
+  .dir-c .hero .data-item:nth-child(3) { animation-delay: 1s; }
+  .dir-c .hero .data-item .val {
+    font-family: monospace; font-size: 32px; color: #39ff88; font-weight: 700;
+  }
+  .dir-c .hero .data-item .lbl {
+    font-family: monospace; font-size: 11px; color: rgba(224,255,232,0.4); margin-top: 4px;
+  }
+
+  .dir-c .features-section {
+    padding: 60px 24px;
+    max-width: 1100px; margin: 0 auto;
+  }
+  .dir-c .feature-bento {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    grid-auto-rows: minmax(140px, auto); gap: 16px;
+    margin-top: 32px;
+  }
+  .dir-c .feature-cell {
+    background: rgba(57,255,136,0.04);
+    border: 1px solid rgba(57,255,136,0.1);
+    border-radius: 16px; padding: 24px;
+    transition: all 0.3s ease;
+    cursor: default;
+  }
+  .dir-c .feature-cell:hover {
+    border-color: rgba(57,255,136,0.3);
+    background: rgba(57,255,136,0.08);
+    transform: translateY(-4px);
+    box-shadow: 0 8px 32px rgba(57,255,136,0.1);
+  }
+  .dir-c .feature-cell:first-child { grid-column: span 2; grid-row: span 2; }
+  .dir-c .feature-cell:nth-child(4) { grid-column: span 2; }
+  .dir-c .feature-cell .icon { font-size: 32px; margin-bottom: 12px; }
+  .dir-c .feature-cell h3 {
+    font-family: monospace; color: #39ff88; font-size: 15px; margin-bottom: 8px;
+  }
+  .dir-c .feature-cell p { color: rgba(224,255,232,0.5); font-size: 13px; line-height: 1.7; }
+
+  .dir-c .specs-accordion {
+    padding: 60px 24px; max-width: 800px; margin: 0 auto;
+  }
+  .dir-c .accordion-item {
+    border: 1px solid rgba(57,255,136,0.1);
+    border-radius: 12px; margin-bottom: 8px;
+    overflow: hidden;
+  }
+  .dir-c .accordion-item summary {
+    padding: 18px 24px; cursor: pointer;
+    font-family: monospace; font-size: 14px; color: #e0ffe8;
+    list-style: none;
+    display: flex; justify-content: space-between; align-items: center;
+    transition: background 0.2s;
+  }
+  .dir-c .accordion-item summary:hover { background: rgba(57,255,136,0.05); }
+  .dir-c .accordion-item summary::after {
+    content: '+'; font-size: 18px; color: #39ff88;
+  }
+  .dir-c .accordion-item[open] summary::after { content: '−'; }
+  .dir-c .accordion-body {
+    padding: 0 24px 20px;
+    font-family: monospace; font-size: 13px;
+  }
+  .dir-c .accordion-body .row {
+    display: flex; justify-content: space-between; padding: 10px 0;
+    border-bottom: 1px solid rgba(57,255,136,0.06);
+  }
+  .dir-c .accordion-body .row .k { color: rgba(224,255,232,0.4); }
+  .dir-c .accordion-body .row .v { color: #e0ffe8; }
+
+  .dir-c .cta-section {
+    padding: 80px 24px;
+    background: linear-gradient(180deg, #080c10 0%, #0a1a12 100%);
+    text-align: center;
+    position: relative;
+  }
+  .dir-c .cta-section::before {
+    content: ''; position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(57,255,136,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(57,255,136,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+  .dir-c .cta-section h2 {
+    font-family: monospace; color: #e0ffe8; font-size: 28px;
+    position: relative;
+  }
+  .dir-c .cta-section p {
+    color: rgba(224,255,232,0.5); margin: 12px 0 28px;
+    font-family: monospace; font-size: 14px;
+    position: relative;
+  }
+  .btn-tech {
+    padding: 16px 36px; border-radius: 8px;
+    border: 1px solid #39ff88;
+    background: transparent; color: #39ff88;
+    font-family: monospace; font-size: 14px; font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+    box-shadow: 0 0 20px rgba(57,255,136,0.15);
+  }
+  .btn-tech:hover {
+    background: rgba(57,255,136,0.15);
+    box-shadow: 0 0 40px rgba(57,255,136,0.3);
+    transform: translateY(-2px);
+  }
+  .btn-tech.copied { background: #22c55e; color: #080c10; border-color: #22c55e; }
+
+  /* ===== Shared animations ===== */
+  @keyframes entranceFadeUp {
+    from { opacity: 0; transform: translateY(32px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes entranceScaleIn {
+    from { opacity: 0; transform: scale(0.92); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes entranceFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  /* Scroll reveal */
+  .reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.7s ease, transform 0.7s ease; }
+  .reveal.visible { opacity: 1; transform: translateY(0); }
+
+  /* Image zoom overlay */
+  .zoom-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.9);
+    z-index: 200; display: flex; align-items: center; justify-content: center;
+    cursor: zoom-out;
+    animation: entranceFadeIn 0.2s ease-out;
+  }
+  .zoom-overlay .zoom-content {
+    max-width: 85vw; max-height: 85vh;
+    display: flex; flex-direction: column; align-items: center; gap: 16px;
+  }
+  .zoom-overlay .zoom-close {
+    position: absolute; top: 20px; right: 20px;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: rgba(255,255,255,0.1); border: none;
+    color: #fff; font-size: 22px; cursor: pointer;
+  }
+
+  /* ===== Responsive ===== */
+  @media (max-width: 768px) {
+    .dir-b .hero { grid-template-columns: 1fr; }
+    .dir-b .hero-visual { padding: 40px; }
+    .dir-b .hero-badge { position: static; padding: 20px 48px; }
+    .dir-b .story-section { grid-template-columns: 1fr; }
+    .dir-b .story-visual { position: static; height: 250px; }
+    .dir-c .feature-bento { grid-template-columns: 1fr 1fr; }
+    .dir-c .feature-cell:first-child { grid-column: span 1; grid-row: span 1; }
+    .dir-c .feature-cell:nth-child(4) { grid-column: span 1; }
+    .dir-a .hero .price-tag { top: 70px; right: 12px; width: 72px; height: 72px; font-size: 15px; }
+    .dir-a .gallery-card { flex: 0 0 220px; }
+    .demo-nav { gap: 4px; padding: 8px 8px; }
+    .demo-nav button { padding: 8px 14px; font-size: 11px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+    .reveal, .story-step { opacity: 1; transform: none; }
+  }
+
+  /* Demo footer */
+  .demo-footer {
+    text-align: center; padding: 40px 20px 60px;
+    color: #333; font-size: 12px; line-height: 1.8;
+  }
+</style>
+</head>
+<body>
+
+<nav class="demo-nav">
+  <button class="active" onclick="showDirection('a')">A · Chromatic Pop</button>
+  <button onclick="showDirection('b')">B · Editorial Motion</button>
+  <button onclick="showDirection('c')">C · Neo-Tech Glow</button>
+</nav>
+
+<!-- ================================================================ -->
+<!-- DIRECTION A: Chromatic Pop -->
+<!-- ================================================================ -->
+<div class="direction visible dir-a" id="dir-a">
+  <div class="hero">
+    <div class="price-tag"><small>尝鲜价</small>¥39</div>
+    <h1>一杯<br>好咖啡<br>的起点</h1>
+    <p class="sub">精选阿拉比卡豆，慢烘焙工艺。每一口都是阳光和土壤的味道。</p>
+    <div class="cta-row">
+      <button class="btn-pop" onclick="copyContact(this)">立即了解</button>
+      <button class="btn-pop" style="background:transparent;color:#fff;border:2px solid rgba(255,255,255,0.4);" onclick="scrollToSection('flavor-a')">探索风味</button>
+    </div>
+  </div>
+
+  <div class="gallery-strip" id="gallery-a">
+    <div class="gallery-card" onclick="zoomImage('☕','拿铁艺术')">
+      <div class="img-area" style="background: linear-gradient(135deg,#ffe0d0,#ffccaa);">☕</div>
+      <div class="info"><h3>经典拿铁</h3><p>丝滑奶泡与浓缩的完美平衡</p></div>
+    </div>
+    <div class="gallery-card" onclick="zoomImage('🫘','咖啡豆')">
+      <div class="img-area" style="background: linear-gradient(135deg,#e8d0c0,#d4b09a);">🫘</div>
+      <div class="info"><h3>精选豆源</h3><p>埃塞俄比亚·耶加雪菲产区</p></div>
+    </div>
+    <div class="gallery-card" onclick="zoomImage('🧊','冰咖啡')">
+      <div class="img-area" style="background: linear-gradient(135deg,#d0e8f0,#a8d0e8);">🧊</div>
+      <div class="info"><h3>冰萃系列</h3><p>18小时冷萃，清爽低酸</p></div>
+    </div>
+    <div class="gallery-card" onclick="zoomImage('🍂','秋日限定')">
+      <div class="img-area" style="background: linear-gradient(135deg,#f0e0c0,#e8c888);">🍂</div>
+      <div class="info"><h3>秋日限定</h3><p>焦糖肉桂风味拿铁</p></div>
+    </div>
+    <div class="gallery-card" onclick="zoomImage('🌱','有机认证')">
+      <div class="img-area" style="background: linear-gradient(135deg,#d0f0d0,#a8e8a8);">🌱</div>
+      <div class="info"><h3>有机认证</h3><p>全程可追溯的有机种植</p></div>
+    </div>
+  </div>
+
+  <div class="flavor-section" id="flavor-a">
+    <h2 style="font-family:'Arial Black',sans-serif;font-size:28px;color:#222;">选一杯你的味道</h2>
+    <div class="flavor-tabs">
+      <button class="flavor-tab active" onclick="switchFlavor(0,this)">经典浓缩</button>
+      <button class="flavor-tab" onclick="switchFlavor(1,this)">香草拿铁</button>
+      <button class="flavor-tab" onclick="switchFlavor(2,this)">焦糖玛奇朵</button>
+    </div>
+    <div class="flavor-content" id="flavor-content-a">
+      <h3>经典浓缩 Espresso</h3>
+      <p>30ml 高压萃取，浓郁醇厚的咖啡本味。表面金黄色的油脂（Crema）是新鲜度的最佳证明。适合追求纯粹咖啡体验的你。</p>
+    </div>
+  </div>
+
+  <div class="cta-section">
+    <h2>想要了解更多？</h2>
+    <p>联系我们获取专属咖啡推荐和优惠信息</p>
+    <button class="btn-pop" onclick="copyContact(this)">复制联系方式</button>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<!-- DIRECTION B: Editorial Motion -->
+<!-- ================================================================ -->
+<div class="direction dir-b" id="dir-b">
+  <div class="hero">
+    <div class="hero-text">
+      <div class="label">CRAFTED WITH CARE · 手作咖啡</div>
+      <h1>从一粒种子<br>到一杯<em>好咖啡</em></h1>
+      <p>我们相信咖啡不仅是饮品，更是一种生活方式。从产地到杯中，每一个环节都经过精心把控。</p>
+      <div style="margin-top:28px;animation:entranceFadeUp 0.6s ease-out both 0.7s;">
+        <button class="btn-editorial" onclick="copyContact(this)">预约品鉴</button>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <div class="cup">☕</div>
+    </div>
+    <div class="hero-badge">
+      <div class="item"><div class="num">100%</div><div class="lbl">阿拉比卡豆</div></div>
+      <div class="item"><div class="num">18h</div><div class="lbl">慢烘焙工艺</div></div>
+    </div>
+  </div>
+
+  <div class="story-section">
+    <div class="story-visual">🌿</div>
+    <div class="story-copy">
+      <div class="story-step visible">
+        <h3>01 · 产地溯源</h3>
+        <p>精选埃塞俄比亚耶加雪菲产区，海拔1800米以上的有机种植园。每一颗咖啡豆都有可追溯的来源信息。</p>
+      </div>
+      <div class="story-step">
+        <h3>02 · 精准烘焙</h3>
+        <p>小批量慢烘焙，每炉18分钟精确控温。烘焙师根据每批豆子的含水量和密度调整曲线，确保最佳风味释放。</p>
+      </div>
+      <div class="story-step">
+        <h3>03 · 新鲜研磨</h3>
+        <p>每杯咖啡在下单后才研磨，从研磨到萃取不超过90秒。保留咖啡中最珍贵的芳香物质和口感层次。</p>
+      </div>
+      <div class="story-step">
+        <h3>04 · 用心冲泡</h3>
+        <p>专业咖啡师用精准的水温、流速和时间，将咖啡的最佳风味呈现在你的杯中。</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="specs-tabs">
+    <div class="inner">
+      <h2 style="font-family:Georgia,serif;color:#e0d0ff;font-size:28px;margin-bottom:24px;">咖啡信息</h2>
+      <div class="tab-bar">
+        <button class="active" onclick="switchSpecTab(0,this)">基本信息</button>
+        <button onclick="switchSpecTab(1,this)">风味描述</button>
+        <button onclick="switchSpecTab(2,this)">冲泡建议</button>
+      </div>
+      <div class="tab-content" id="spec-content-b">
+        <div class="spec-row"><span class="k">产区</span><span class="v">埃塞俄比亚·耶加雪菲</span></div>
+        <div class="spec-row"><span class="k">海拔</span><span class="v">1800–2200m</span></div>
+        <div class="spec-row"><span class="k">处理法</span><span class="v">水洗处理</span></div>
+        <div class="spec-row"><span class="k">烘焙度</span><span class="v">中浅烘焙</span></div>
+        <div class="spec-row"><span class="k">价格</span><span class="v">¥39 / 杯</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cta-section">
+    <h2>开启你的咖啡之旅</h2>
+    <p>预约到店品鉴，或联系线上订购</p>
+    <button class="btn-editorial" onclick="copyContact(this)">复制联系方式</button>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<!-- DIRECTION C: Neo-Tech Glow -->
+<!-- ================================================================ -->
+<div class="direction dir-c" id="dir-c">
+  <div class="hero">
+    <div class="hero-glow"></div>
+    <div class="label">[ PRECISION BREWING SYSTEM v2.1 ]</div>
+    <h1>重新定义<br><span class="accent">咖啡精度</span></h1>
+    <p>每一杯都经过精确的温度、压力和时间控制。数据驱动的完美萃取。</p>
+    <div class="data-row">
+      <div class="data-item"><div class="val">92°</div><div class="lbl">最佳水温</div></div>
+      <div class="data-item"><div class="val">25s</div><div class="lbl">萃取时间</div></div>
+      <div class="data-item"><div class="val">9bar</div><div class="lbl">萃取压力</div></div>
+    </div>
+  </div>
+
+  <div class="features-section">
+    <h2 style="font-family:monospace;color:#39ff88;font-size:22px;">核心参数</h2>
+    <div class="feature-bento">
+      <div class="feature-cell">
+        <div class="icon">🌡️</div>
+        <h3>温控系统</h3>
+        <p>PID 精确控温，±0.5°C 波动范围。确保每次萃取都在最佳温度区间，释放咖啡豆最完整的风味分子链。</p>
+      </div>
+      <div class="feature-cell">
+        <div class="icon">⚡</div>
+        <h3>快速加热</h3>
+        <p>3秒预热，即开即用。</p>
+      </div>
+      <div class="feature-cell">
+        <div class="icon">🎯</div>
+        <h3>智能配比</h3>
+        <p>自动识别豆种推荐参数。</p>
+      </div>
+      <div class="feature-cell">
+        <div class="icon">📊</div>
+        <h3>数据记录</h3>
+        <p>每杯萃取数据可追溯，通过 APP 查看温度曲线、萃取时间和压力变化，持续优化你的咖啡体验。</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="specs-accordion">
+    <h2 style="font-family:monospace;color:#39ff88;font-size:22px;margin-bottom:20px;">技术规格</h2>
+    <details class="accordion-item" open>
+      <summary>基本信息</summary>
+      <div class="accordion-body">
+        <div class="row"><span class="k">产品名称</span><span class="v">智能手冲咖啡机</span></div>
+        <div class="row"><span class="k">功率</span><span class="v">1450W</span></div>
+        <div class="row"><span class="k">容量</span><span class="v">600ml</span></div>
+        <div class="row"><span class="k">价格</span><span class="v">¥39 / 杯</span></div>
+      </div>
+    </details>
+    <details class="accordion-item">
+      <summary>性能参数</summary>
+      <div class="accordion-body">
+        <div class="row"><span class="k">温度范围</span><span class="v">80–96°C</span></div>
+        <div class="row"><span class="k">控温精度</span><span class="v">±0.5°C</span></div>
+        <div class="row"><span class="k">预热时间</span><span class="v">3秒</span></div>
+      </div>
+    </details>
+    <details class="accordion-item">
+      <summary>智能功能</summary>
+      <div class="accordion-body">
+        <div class="row"><span class="k">连接方式</span><span class="v">WiFi / Bluetooth</span></div>
+        <div class="row"><span class="k">APP 支持</span><span class="v">iOS / Android</span></div>
+        <div class="row"><span class="k">固件更新</span><span class="v">OTA 在线升级</span></div>
+      </div>
+    </details>
+  </div>
+
+  <div class="cta-section">
+    <h2>&gt; 开始体验 &lt;</h2>
+    <p>获取产品详情和技术参数手册</p>
+    <button class="btn-tech" onclick="copyContact(this)">复制联系方式</button>
+  </div>
+</div>
+
+<div class="demo-footer">
+  OneBoss V4 — AI 客制化互动营销网页 · 同一商品（咖啡）· 3 套完全不同的设计方向<br>
+  Chromatic Pop / Editorial Motion / Neo-Tech Glow · 真实交互 · 动效系统 · 移动端适配
+</div>
+
+<script>
+// Direction switching
+function showDirection(id) {
+  document.querySelectorAll('.direction').forEach(d => d.classList.remove('visible'));
+  document.getElementById('dir-' + id).classList.add('visible');
+  document.querySelectorAll('.demo-nav button').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Copy contact
+function copyContact(btn) {
+  const text = '联系邮箱: hello@oneboss.ai | 电话: 400-123-4567';
+  navigator.clipboard.writeText(text).then(() => {
+    btn.classList.add('copied');
+    btn.textContent = '已复制 ✓';
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.textContent = '复制联系方式';
+    }, 2000);
+  }).catch(() => {
+    btn.textContent = '请手动复制';
+  });
+}
+
+// Flavor tabs (Direction A)
+const flavors = [
+  { title: '经典浓缩 Espresso', body: '30ml 高压萃取，浓郁醇厚的咖啡本味。表面金黄色的油脂（Crema）是新鲜度的最佳证明。适合追求纯粹咖啡体验的你。' },
+  { title: '香草拿铁 Vanilla Latte', body: '丝滑牛奶与浓缩咖啡的完美比例，注入马达加斯加香草糖浆。顶部细腻奶泡，带来温柔甜蜜的咖啡时光。' },
+  { title: '焦糖玛奇朵 Caramel Macchioto', body: '先倒牛奶，再加浓缩，最后淋上手工焦糖酱。层次分明的视觉效果，甜中带苦的丰富口感。' },
+];
+function switchFlavor(idx, btn) {
+  document.querySelectorAll('.flavor-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const el = document.getElementById('flavor-content-a');
+  el.style.opacity = 0;
+  setTimeout(() => {
+    el.innerHTML = `<h3>${flavors[idx].title}</h3><p>${flavors[idx].body}</p>`;
+    el.style.opacity = 1;
+  }, 150);
+}
+
+// Spec tabs (Direction B)
+const specs = [
+  `<div class="spec-row"><span class="k">产区</span><span class="v">埃塞俄比亚·耶加雪菲</span></div>
+   <div class="spec-row"><span class="k">海拔</span><span class="v">1800–2200m</span></div>
+   <div class="spec-row"><span class="k">处理法</span><span class="v">水洗处理</span></div>
+   <div class="spec-row"><span class="k">烘焙度</span><span class="v">中浅烘焙</span></div>
+   <div class="spec-row"><span class="k">价格</span><span class="v">¥39 / 杯</span></div>`,
+  `<div class="spec-row"><span class="k">酸度</span><span class="v">中等偏高</span></div>
+   <div class="spec-row"><span class="k">甜度</span><span class="v">中等</span></div>
+   <div class="spec-row"><span class="k">醇厚度</span><span class="v">中等</span></div>
+   <div class="spec-row"><span class="k">风味</span><span class="v">茉莉花、柠檬、蜂蜜</span></div>
+   <div class="spec-row"><span class="k">余韵</span><span class="v">干净清爽，回甘</span></div>`,
+  `<div class="spec-row"><span class="k">推荐水温</span><span class="v">92°C</span></div>
+   <div class="spec-row"><span class="k">粉水比</span><span class="v">1:15</span></div>
+   <div class="spec-row"><span class="k">研磨度</span><span class="v">中细</span></div>
+   <div class="spec-row"><span class="k">冲泡时间</span><span class="v">2:30–3:00</span></div>`,
+];
+function switchSpecTab(idx, btn) {
+  document.querySelectorAll('.tab-bar button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const el = document.getElementById('spec-content-b');
+  el.style.opacity = 0;
+  setTimeout(() => {
+    el.innerHTML = specs[idx];
+    el.style.opacity = 1;
+  }, 150);
+}
+
+// Image zoom
+function zoomImage(emoji, title) {
+  const overlay = document.createElement('div');
+  overlay.className = 'zoom-overlay';
+  overlay.innerHTML = `
+    <button class="zoom-close" onclick="this.parentElement.remove()">×</button>
+    <div class="zoom-content">
+      <div style="width:300px;height:300px;display:flex;align-items:center;justify-content:center;font-size:120px;background:rgba(255,255,255,0.05);border-radius:24px;">${emoji}</div>
+      <div style="color:#aaa;font-size:16px;">${title} · 点击任意处关闭</div>
+    </div>`;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+// Scroll reveal
+function initScrollReveal() {
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.15 });
+  document.querySelectorAll('.reveal, .story-step').forEach(el => observer.observe(el));
+}
+
+// Scroll to section
+function scrollToSection(id) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+}
+
+initScrollReveal();
+</script>
+</body>
+</html>

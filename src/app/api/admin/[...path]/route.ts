@@ -33,7 +33,7 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
 
     assert(request.method === 'GET', 'METHOD_NOT_ALLOWED', 405);
 
-    const actor = await authenticate(request);
+    const actor = { ...(await authenticate(request)), requestId };
     await service.rateLimit(actor);
 
     const data = await transaction(actor, async (tx) => {
@@ -60,6 +60,8 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
         return admin.orderDetail(tx, actor, path[1]);
 
       if (route === 'approvals') return admin.approvals(tx, actor);
+
+      if (route === 'agents/workers') return admin.workerHealth(tx,actor);
 
       if (route === 'agents/runs')
         return admin.agentRuns(tx, actor, {

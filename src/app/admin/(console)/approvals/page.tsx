@@ -107,7 +107,7 @@ export default function ApprovalsPage() {
         ) : (
           <div style={{ display: 'grid', gap: 14, padding: 18 }}>
             <Banner tone="warning">
-              只有在微信账单中核对了<strong>真实入账、金额与付款备注</strong>之后才能登记。
+              只有在对应的微信或支付宝账单中核对了<strong>真实入账、金额与付款备注</strong>之后才能登记。
               客户自报、截图与演示付款都不得作为到账依据。
             </Banner>
             {attempts.map((attempt) => (
@@ -126,7 +126,7 @@ export default function ApprovalsPage() {
                     </span>
                   </div>
                   <div style={{ fontSize: 12.5, color: 'var(--ad-muted)' }}>
-                    付款备注 <span className="ad-code">{attempt.payment_memo ?? '—'}</span> · 提交于{' '}
+                    {attempt.payment_channel === 'alipay' ? '支付宝' : '微信'} · 付款备注 <span className="ad-code">{attempt.payment_memo ?? '—'}</span> · 提交于{' '}
                     {dateTime(attempt.reported_at ?? attempt.created_at)}
                   </div>
                   {attempt.customer_report && (

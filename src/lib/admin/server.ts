@@ -33,25 +33,26 @@ const offset = (page: Page) => (page.page - 1) * page.pageSize;
  * 经营总览。
  * 口径：
  * - 今日确认到账 = payment_events 中今日处理的、非演示订单的金额之和
- * - 本月净收款 = 本月到账 − 本月已确认退款（refunds 表没有确认时间戳，按创建时间归月）
+ * - 本月净收款 = 本月到账 − 本月已确认退款（按实际确认时间归月，历史未知时间单列）
  * - 待制作放行 = 已付款但还没有创建项目的订单数
  * - 制作中 = projects 处于资料/设计/生成/审核阶段
  * - 待作品审核 = projects.status = 'QA_REVIEW'
  */
 export async function overview(tx: Tx, actor: Actor) {
-  await platformAdmin(tx, actor);
+  const role=await platformAdmin(tx, actor, 'view.dashboard');
   const [row] = await tx`
     select
-      coalesce((select sum(o.amount_minor) from payment_events e
+      coalesce((select sum(o.amount_minor) from (select order_id,min(processed_at) as processed_at from payment_events group by order_id) e
         join service_orders o on o.id = e.order_id
-        where o.is_demo = false and e.processed_at >= date_trunc('day', now())), 0)::int as today_confirmed,
-      coalesce((select sum(o.amount_minor) from payment_events e
+        where o.is_demo = false and e.processed_at >= (date_trunc('day', now() at time zone 'Asia/Shanghai') at time zone 'Asia/Shanghai')), 0)::int as today_confirmed,
+      coalesce((select sum(o.amount_minor) from (select order_id,min(processed_at) as processed_at from payment_events group by order_id) e
         join service_orders o on o.id = e.order_id
-        where o.is_demo = false and e.processed_at >= date_trunc('month', now())), 0)::int as month_confirmed,
+        where o.is_demo = false and e.processed_at >= (date_trunc('month', now() at time zone 'Asia/Shanghai') at time zone 'Asia/Shanghai')), 0)::int as month_confirmed,
       coalesce((select sum(r.amount_minor) from refunds r
         join service_orders o on o.id = r.order_id
         where o.is_demo = false and r.status = 'CONFIRMED'
-          and r.created_at >= date_trunc('month', now())), 0)::int as month_refunded,
+          and r.confirmed_at >= (date_trunc('month', now() at time zone 'Asia/Shanghai') at time zone 'Asia/Shanghai')), 0)::int as month_refunded,
+      (select count(*) from refunds r join service_orders o on o.id=r.order_id where not o.is_demo and r.status='CONFIRMED' and r.confirmed_at is null)::int as undated_refunds,
       (select count(*) from service_orders)::int as total_orders,
       (select count(*) from payment_attempts a
         join service_orders o on o.id = a.order_id
@@ -77,7 +78,7 @@ export async function overview(tx: Tx, actor: Actor) {
   `;
 
   const incidents = await tx`
-    select r.id, r.role, r.status, r.project_id, r.error_class, r.created_at, r.completed_at,
+    select r.id, r.role,r.employee_key,r.stage, r.status, r.project_id, r.error_class, r.created_at, r.completed_at,
            r.usage, p.publish_slug
     from agent_runs r left join projects p on p.id = r.project_id
     where r.status in ('FAILED','NEEDS_REVIEW')
@@ -85,8 +86,9 @@ export async function overview(tx: Tx, actor: Actor) {
   `;
 
   return {
-    todayConfirmedMinor: row.today_confirmed,
-    monthNetMinor: row.month_confirmed - row.month_refunded,
+    todayConfirmedMinor: ['owner','finance'].includes(role) ? row.today_confirmed : null,
+    undatedRefundCount: row.undated_refunds,
+    monthNetMinor: ['owner','finance'].includes(role) ? row.month_confirmed - row.month_refunded : null,
     totalOrders: row.total_orders,
     pendingPaymentReviews: row.pending_payment_reviews,
     pendingReleases: row.pending_releases,
@@ -98,6 +100,8 @@ export async function overview(tx: Tx, actor: Actor) {
     agentIncidents: incidents.map((run) => ({
       id: run.id,
       role: run.role,
+      employeeKey: run.employee_key,
+      stage: run.stage,
       status: run.status,
       projectId: run.project_id,
       projectName: run.publish_slug ?? null,
@@ -110,7 +114,7 @@ export async function overview(tx: Tx, actor: Actor) {
     })),
     definitions: {
       todayConfirmed: 'payment_events 今日处理的非演示订单金额之和',
-      monthNet: '本月到账 − 本月已确认退款（退款按创建时间归月）',
+      monthNet: '本月到账 − 本月已确认退款（按实际确认时间归月，历史未知时间单列）',
       pendingReleases: '已付款但尚未创建项目的订单',
       production: '项目状态为待确认资料 / 待选设计 / 待制作',
       workReviews: '项目状态为 QA_REVIEW',
@@ -126,49 +130,34 @@ export async function revenue(
   to: string,
   groupBy: 'day' | 'week' | 'month',
 ) {
-  await platformAdmin(tx, actor);
+  await platformAdmin(tx, actor, 'view.finance');
+  const start = new Date(`${from}T00:00:00Z`), end = new Date(`${to}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) ||
+      !Number.isFinite(+start) || !Number.isFinite(+end) || start.toISOString().slice(0,10)!==from || end.toISOString().slice(0,10)!==to ||
+      +end < +start || +end - +start > 366 * 86400000) throw new AppError('DATE_RANGE_INVALID',400);
   const unit = groupBy === 'week' ? 'week' : groupBy === 'month' ? 'month' : 'day';
-  const confirmed = await tx`
-    select to_char(date_trunc(${unit}, e.processed_at at time zone 'Asia/Shanghai'), 'YYYY-MM-DD') as date,
-           sum(o.amount_minor)::int as amount,
-           count(distinct o.id)::int as orders
-    from payment_events e
-    join service_orders o on o.id = e.order_id
-    where o.is_demo = false
-      and (e.processed_at at time zone 'Asia/Shanghai')::date between ${from}::date and ${to}::date
-    group by 1 order by 1
+  return tx`
+    with buckets as (
+      select generate_series(date_trunc(${unit},${from}::date::timestamp),
+        date_trunc(${unit},${to}::date::timestamp),('1 '||${unit})::interval) as bucket
+    ), payment_facts as (
+      select order_id,min(processed_at) as processed_at from payment_events group by order_id
+    ), receipts as (
+      select date_trunc(${unit},e.processed_at at time zone 'Asia/Shanghai') as bucket,
+        sum(o.amount_minor)::bigint as amount,count(*)::int as orders
+      from payment_facts e join service_orders o on o.id=e.order_id
+      where not o.is_demo and (e.processed_at at time zone 'Asia/Shanghai')::date between ${from}::date and ${to}::date
+      group by 1
+    ), returned as (
+      select date_trunc(${unit},r.confirmed_at at time zone 'Asia/Shanghai') as bucket,sum(r.amount_minor)::bigint as amount
+      from refunds r join service_orders o on o.id=r.order_id
+      where not o.is_demo and r.status='CONFIRMED' and r.confirmed_at is not null
+        and (r.confirmed_at at time zone 'Asia/Shanghai')::date between ${from}::date and ${to}::date group by 1
+    ) select to_char(b.bucket,'YYYY-MM-DD') as date,
+      coalesce(c.amount,0)::float8 as "confirmedMinor",coalesce(r.amount,0)::float8 as "refundedMinor",
+      coalesce(c.orders,0)::int as "orderCount",(coalesce(c.amount,0)-coalesce(r.amount,0))::float8 as "netMinor"
+      from buckets b left join receipts c using(bucket) left join returned r using(bucket) order by b.bucket
   `;
-  const refunded = await tx`
-    select to_char(date_trunc(${unit}, r.created_at at time zone 'Asia/Shanghai'), 'YYYY-MM-DD') as date,
-           sum(r.amount_minor)::int as amount
-    from refunds r
-    join service_orders o on o.id = r.order_id
-    where o.is_demo = false and r.status = 'CONFIRMED'
-      and (r.created_at at time zone 'Asia/Shanghai')::date between ${from}::date and ${to}::date
-    group by 1 order by 1
-  `;
-
-  const map = new Map<string, { date: string; confirmedMinor: number; refundedMinor: number; orderCount: number }>();
-  for (const row of confirmed)
-    map.set(row.date, {
-      date: row.date,
-      confirmedMinor: row.amount,
-      refundedMinor: 0,
-      orderCount: row.orders,
-    });
-  for (const row of refunded) {
-    const current = map.get(row.date) ?? {
-      date: row.date,
-      confirmedMinor: 0,
-      refundedMinor: 0,
-      orderCount: 0,
-    };
-    current.refundedMinor = row.amount;
-    map.set(row.date, current);
-  }
-  return [...map.values()]
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .map((point) => ({ ...point, netMinor: point.confirmedMinor - point.refundedMinor }));
 }
 
 export interface OrderQuery extends Page {
@@ -180,7 +169,7 @@ export interface OrderQuery extends Page {
 
 /** 订单列表：服务端分页与筛选，带制作状态。 */
 export async function orders(tx: Tx, actor: Actor, query: OrderQuery) {
-  await platformAdmin(tx, actor);
+  await platformAdmin(tx, actor, 'view.orders');
   const keyword = query.keyword?.trim();
   const like = keyword ? `%${keyword}%` : null;
   const rows = await tx`
@@ -219,7 +208,7 @@ export async function orders(tx: Tx, actor: Actor, query: OrderQuery) {
 
 /** 订单详情：订单 + 权益 + 支付记录 + 项目 + 版本 + 退款。 */
 export async function orderDetail(tx: Tx, actor: Actor, id: string) {
-  await platformAdmin(tx, actor);
+  await platformAdmin(tx, actor, 'view.orders');
   const orderId = parseId(id);
   const [order] = await tx`
     select o.*, g.name as organization from service_orders o
@@ -256,7 +245,7 @@ export async function orderDetail(tx: Tx, actor: Actor, id: string) {
       `
     : [];
   const refunds = await tx`
-    select id, amount_minor, status, provider_ref, created_at from refunds
+    select id, amount_minor, status, provider_ref, created_at, confirmed_at from refunds
     where order_id = ${orderId} order by created_at desc
   `;
   const changes = project
@@ -273,7 +262,7 @@ export async function orderDetail(tx: Tx, actor: Actor, id: string) {
  * 类型：支付核验 / 退款审批 / 制作放行 / 作品审核 / 任务失败
  */
 export async function approvals(tx: Tx, actor: Actor) {
-  await platformAdmin(tx, actor);
+  await platformAdmin(tx, actor, 'view.approvals');
   const payments = await tx`
     select a.id, a.order_id, a.amount_minor, a.created_at, o.order_no, g.name as organization,
            o.plan_snapshot->>'name' as plan_name, r.details as customer_report
@@ -392,9 +381,9 @@ export interface RunQuery extends Page {
 
 /** AI 员工运行记录（跨租户只读）。 */
 export async function agentRuns(tx: Tx, actor: Actor, query: RunQuery) {
-  await platformAdmin(tx, actor);
+  await platformAdmin(tx, actor, 'view.agents');
   const rows = await tx`
-    select r.id, r.role, r.status, r.project_id, r.error_class, r.created_at, r.completed_at,
+    select r.id, r.role,r.employee_key,r.stage, r.status, r.project_id, r.error_class, r.created_at, r.completed_at,
            r.usage, r.attempt, p.publish_slug, o.plan_snapshot->>'name' as plan_name
     from agent_runs r
     left join projects p on p.id = r.project_id
@@ -415,6 +404,8 @@ export async function agentRuns(tx: Tx, actor: Actor, query: RunQuery) {
     items: rows.map((run) => ({
       id: run.id,
       role: run.role,
+      employeeKey: run.employee_key,
+      stage: run.stage,
       status: run.status,
       projectId: run.project_id,
       projectName: run.publish_slug ?? null,
@@ -434,7 +425,7 @@ export async function agentRuns(tx: Tx, actor: Actor, query: RunQuery) {
 
 /** 作品审核队列：取项目最近一个已渲染版本。 */
 export async function workReviews(tx: Tx, actor: Actor, query: Page) {
-  await platformAdmin(tx, actor);
+  await platformAdmin(tx, actor, 'view.reviews');
   const rows = await tx`
     select p.id as project_id, p.publish_slug, p.status as project_status, g.name as organization,
            v.revision, v.status as version_status, v.body, v.created_at
@@ -486,7 +477,7 @@ export async function workReviews(tx: Tx, actor: Actor, query: Page) {
 
 /** 客户列表：按组织聚合，邮箱取自 Auth，做脱敏由前端负责。 */
 export async function customers(tx: Tx, actor: Actor, query: Page & { keyword?: string }) {
-  await platformAdmin(tx, actor);
+  await platformAdmin(tx, actor, 'view.customers');
   const like = query.keyword ? `%${query.keyword}%` : null;
   const rows = await tx`
     select g.id, g.name, g.owner_user_id,
@@ -523,7 +514,7 @@ export async function customers(tx: Tx, actor: Actor, query: Page & { keyword?: 
 
 /** 审计日志：表不存在时返回空并标记，而不是 500。 */
 export async function auditLogs(tx: Tx, actor: Actor, query: Page) {
-  await platformAdmin(tx, actor);
+  await platformAdmin(tx, actor, 'view.audit');
   const [exists] = await tx`select to_regclass('public.admin_audit_logs') as table`;
   if (!exists?.table) return { items: [], page: query.page, pageSize: query.pageSize, total: 0, hasNextPage: false, tableExists: false };
   const rows = await tx`
@@ -548,4 +539,12 @@ export async function auditLogs(tx: Tx, actor: Actor, query: Page) {
     hasNextPage: offset(query) + rows.length < count.total,
     tableExists: true,
   };
+}
+
+/** A fresh process heartbeat is separate from a task lease; status is evaluated on the server. */
+export async function workerHealth(tx:Tx,actor:Actor){
+ await platformAdmin(tx,actor,'view.agents');
+ return tx`select id,version,started_at,last_seen_at,stopped_at,current_run_id,
+ case when stopped_at is not null then 'stopped' when last_seen_at<now()-interval '45 seconds' then 'offline' else 'online' end as status
+ from worker_instances order by started_at desc limit 50`;
 }

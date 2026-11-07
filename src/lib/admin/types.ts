@@ -72,6 +72,7 @@ export interface AdminRefund {
 }
 
 export interface ManualAttempt {
+  payment_channel: 'wechat' | 'alipay' | null;
   id: string;
   order_id: string;
   amount_minor: number;
@@ -84,6 +85,7 @@ export interface ManualAttempt {
 }
 
 export interface AdminWorkspacePayload {
+  role?: import('./permissions').AdminRole;
   orders: AdminOrder[];
   refunds: AdminRefund[];
   manualAttempts: ManualAttempt[];
@@ -92,8 +94,9 @@ export interface AdminWorkspacePayload {
 /* ------------------------- 以下为 A 组待补接口的契约 ------------------------- */
 
 export interface DashboardMetrics {
-  todayConfirmedMinor: number;
-  monthNetMinor: number;
+  undatedRefundCount?: number;
+  todayConfirmedMinor: number | null;
+  monthNetMinor: number | null;
   totalOrders: number;
   pendingPaymentReviews: number;
   pendingReleases: number;
@@ -128,6 +131,8 @@ export interface ApprovalItem {
 }
 
 export interface AgentRun {
+  employeeKey?: string;
+  stage?: string | null;
   id: string;
   role: string;
   status: AgentRunStatus;

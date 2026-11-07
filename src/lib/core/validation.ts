@@ -1,6 +1,27 @@
-import { type ProductionType, type FactType, type Brief } from '../../contracts';
+import { type ProductionType, type FactType, type Brief, type DesignSystemType } from '../../contracts';
 import type { z } from 'zod';
 import { assert } from './errors';
+
+/** Verify production site structure follows the approved blueprint section types in order. */
+export function validateBlueprintAdherence(
+  output: ProductionType,
+  design: DesignSystemType,
+) {
+  const blueprint = design.siteBlueprint;
+  if (!blueprint) return; // Legacy design without blueprint: no structural constraint.
+  const rootPage = output.site.pages.find((p) => p.slug === '');
+  if (!rootPage) return; // Root page validation is handled by validateProduction.
+  const blueprintTypes = (blueprint.pages[0]?.sections ?? []).map((s) => s.type);
+  const outputTypes = rootPage.sections.map((s) => s.type);
+  // Every blueprint section type must appear in the production output (order can gain
+  // sections but must not lose approved structure).
+  const missing = blueprintTypes.filter((t) => !outputTypes.includes(t));
+  assert(
+    missing.length === 0,
+    `BLUEPRINT_STRUCTURE_MISMATCH: missing section types ${missing.join(', ')}`,
+  );
+}
+
 export function validateProduction(
   output: ProductionType,
   projectId: string,

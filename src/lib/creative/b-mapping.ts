@@ -63,7 +63,9 @@ function approved(refs: string[], values: unknown[], version: number) {
 export function mapDesign(
   input: Parameters<CreativeAdapter['renderSite']>[0]['design'],
 ): DesignSystem {
-  const styleId =
+  // Known legacy presets serve as fallback for missing tokens only.
+  // Custom Design DNA tokens are the primary render basis when present.
+  const presetKey =
     input.styleId in designPresets
       ? (input.styleId as keyof typeof designPresets)
       : /tech|future|科技/i.test(input.styleId)
@@ -71,39 +73,58 @@ export function mapDesign(
         : /young|vibrant|活力/i.test(input.styleId)
           ? 'young-vibrant'
           : 'editorial-minimal';
-  const base = designPresets[styleId];
+  const base = designPresets[presetKey];
+  const palette = {
+    ...base.palette,
+    ...Object.fromEntries(
+      Object.keys(base.palette)
+        .filter((key) => input.palette[key])
+        .map((key) => [key, input.palette[key]]),
+    ),
+    // Also accept semantic palette keys beyond the preset's fixed set.
+    ...Object.fromEntries(
+      Object.entries(input.palette).filter(
+        ([key]) => !(key in base.palette) && /^#[a-fA-F0-9]{6}$/.test(input.palette[key]),
+      ),
+    ),
+  };
+  const typography = {
+    ...base.typography,
+    ...Object.fromEntries(
+      ['display', 'body', 'mono', 'scale']
+        .filter((key) => input.typography[key] !== undefined)
+        .map((key) => [key, input.typography[key]]),
+    ),
+  };
   return designSystemSchema.parse({
     ...base,
+    styleId: input.styleId || base.styleId,
     version: input.version,
     factVersion: input.factVersion,
     approvedByClient: input.approvedByClient,
     rationale: input.rationale || base.rationale,
-    palette: {
-      ...base.palette,
-      ...Object.fromEntries(
-        Object.keys(base.palette)
-          .filter((key) => input.palette[key])
-          .map((key) => [key, input.palette[key]]),
-      ),
-    },
-    typography: {
-      ...base.typography,
-      ...Object.fromEntries(
-        ['display', 'body', 'mono']
-          .filter((key) => input.typography[key])
-          .map((key) => [key, input.typography[key]]),
-      ),
-    },
+    name: input.name || base.name,
+    tagline: input.tagline || base.tagline,
+    palette,
+    typography,
+    spacingScale:
+      input.spacingScale.length > 0
+        ? Math.min(1.6, Math.max(0.8, input.spacingScale.reduce((a, b) => a + b, 0) / input.spacingScale.length / 16))
+        : base.spacingScale,
     radiusScale: Math.min(48, input.radiusScale[0] ?? base.radiusScale),
-    layoutMode: ['editorial', 'split', 'centered', 'staggered'].includes(input.layoutMode)
-      ? input.layoutMode
-      : base.layoutMode,
+    layoutMode: input.layoutMode || base.layoutMode,
     motionPreset:
       input.motionPreset === 'none'
         ? 'reduced'
         : input.motionPreset === 'energetic'
           ? 'dynamic'
           : 'subtle',
+    heroComposition: input.heroComposition || base.heroComposition,
+    density: input.density ?? base.density,
+    imageTreatment: input.imageTreatment ?? base.imageTreatment,
+    // Section flow is derived from the blueprint when available.
+    sectionFlow:
+      input.siteBlueprint?.pages[0]?.sections.map((s) => s.type) ?? base.sectionFlow,
   });
 }
 function renderAssets(
@@ -122,24 +143,34 @@ function renderAssets(
   return [...new Set(refs)].map((id) => {
     const asset = byId.get(id);
     assert(asset, 'UNAUTHORIZED_ASSET');
-    if (publicUrls) {
-      assert(asset.url, 'PUBLIC_ASSET_URL_REQUIRED');
-      const url = new URL(asset.url),
-        origin = new URL(expectedOrigin!);
-      assert(
-        url.origin === origin.origin &&
-          url.pathname.startsWith('/storage/v1/object/sign/') &&
-          url.pathname.includes(`/${projectId}/assets/${id}.png`),
-        'UNAUTHORIZED_ASSET_URL',
-      );
+    // URLs are always validated against the Supabase signed-URL pattern when present.
+    let url: string | undefined;
+    if (asset.url) {
+      let valid = false;
+      try {
+        const parsed = new URL(asset.url);
+        const expected = expectedOrigin || process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const origin = expected ? new URL(expected) : undefined;
+        valid =
+          !!origin &&
+          parsed.origin === origin.origin &&
+          parsed.pathname.startsWith('/storage/v1/object/sign/') &&
+          parsed.pathname.includes(`/${projectId}/assets/${id}.png`);
+      } catch {
+        valid = false;
+      }
+      if (valid) url = asset.url;
+      // In production mode an invalid URL is a hard failure, not a silent fallback.
+      else if (publicUrls) assert(false, 'UNAUTHORIZED_ASSET_URL');
     }
+    if (publicUrls) assert(url, 'PUBLIC_ASSET_URL_REQUIRED');
     return {
       id,
-      alt: '客户授权产品素材',
+      alt: url ? '客户授权产品素材' : '概念图形 · 非商家实拍',
       art: 'abstract',
-      isConcept: false,
-      licenseNote: '客户授权素材',
-      ...(publicUrls ? { url: asset.url } : {}),
+      isConcept: !url,
+      licenseNote: url ? '客户授权素材' : '概念示意，非商家实拍',
+      ...(url ? { url } : {}),
     };
   });
 }
@@ -235,9 +266,9 @@ export function mapSite(
 ) {
   return mapSiteForView(input, publicUrls, expectedOrigin, false);
 }
-/** A direction is a proposal, never an approval or publication. No asset URLs are consumed here. */
+/** A direction is a proposal, never an approval or publication. Asset URLs pass through only when they are valid server-signed URLs; otherwise concept placeholders are shown. */
 export function mapDirectionSite(input: Parameters<CreativeAdapter['renderSite']>[0]) {
-  return mapSiteForView({ ...input, assets: [] }, true, undefined, true);
+  return mapSiteForView(input, false, process.env.NEXT_PUBLIC_SUPABASE_URL, true);
 }
 function mapSiteForView(
   input: Parameters<CreativeAdapter['renderSite']>[0],
@@ -267,6 +298,7 @@ function mapSiteForView(
   const sections: SiteSection[] = page.sections.flatMap((section, index): SiteSection[] => {
     const list = approved(section.factRefs, input.facts, site.factVersion);
     const id = `${section.type}-${index}`;
+    const layout = section.props as SiteSection extends { layout?: infer L } ? L : never;
     const get = (key: string) => {
       const fact = list.find((f) => keyOf(f.key) === key);
       return fact ? displayFact(fact.value) : undefined;
@@ -276,6 +308,7 @@ function mapSiteForView(
         {
           type: 'hero',
           id: 'hero',
+          layout,
           props: {
             eyebrow: get('brand') || '产品介绍',
             title: get('name') || seed.name,
@@ -289,11 +322,12 @@ function mapSiteForView(
         },
       ];
     if (section.type === 'gallery')
-      return section.assetRefs.length
+      return section.assetRefs.length || proposal
         ? [
             {
               type: 'gallery',
               id,
+              layout,
               props: {
                 title: '产品素材',
                 assetRefs: section.assetRefs,
@@ -307,18 +341,20 @@ function mapSiteForView(
         {
           type: 'features',
           id,
+          layout,
           props: {
             title: '已确认的产品重点',
             items: rows(list).map((row) => ({ title: row.label, body: row.value })),
           },
         },
       ];
-    if (section.type === 'specs') return [specs(list, id)];
+    if (section.type === 'specs') return [{ ...specs(list, id), layout }];
     if (section.type === 'product-grid')
       return [
         {
           type: 'products',
           id,
+          layout,
           props: {
             title: '产品资料',
             items: seed.products.map((p) => ({
@@ -350,6 +386,7 @@ function mapSiteForView(
         {
           type: 'cta',
           id: 'cta',
+          layout,
           props: {
             title: '了解更多',
             body: get('contact') || '联系方式以客户确认资料为准。',
@@ -359,10 +396,25 @@ function mapSiteForView(
         },
       ];
     }
+    if (section.type === 'product-3d')
+      return [
+        {
+          type: 'product-3d',
+          id,
+          layout,
+          props: {
+            title: get('name') ? `${get('name')} · 3D 展示` : '3D 产品展示',
+            description: '交互式 3D 产品模型，可旋转、缩放和拆解查看。',
+            modelTrust: 'conceptual_exploded',
+            variant3d: (section.props as any).variant3d || 'full-width-stage',
+          },
+        },
+      ];
     return [
       {
         type: 'story',
         id,
+        layout,
         props: {
           title: section.type === 'brand' ? '品牌资料' : '产品介绍',
           body: list.map((f) => displayFact(f.value)).join(' · '),

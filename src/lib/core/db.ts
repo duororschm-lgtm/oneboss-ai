@@ -13,7 +13,7 @@ export async function closeDatabase() {
   db = undefined;
 }
 export type Tx = postgres.TransactionSql;
-export type Actor = { userId: string };
+export type Actor = { userId: string; requestId?: string };
 export async function transaction<T>(actor: Actor, fn: (tx: Tx) => Promise<T>): Promise<T> {
   return (await database().begin(async (sql) => {
     await sql`select set_config('request.jwt.claim.sub',${actor.userId},true)`;

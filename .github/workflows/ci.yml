@@ -2,7 +2,7 @@ name: Core checks
 on:
   pull_request:
   push:
-    branches: [main, feat/core]
+    branches: [main, feat/core, fix/oneboss-fullflow]
 permissions:
   contents: read
 jobs:

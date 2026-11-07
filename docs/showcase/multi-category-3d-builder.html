@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OneBoss 多品类 3D Builder — 产品级参数化模型</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Microsoft YaHei", sans-serif; background: #0a0e14; color: #eee; overflow: hidden; height: 100vh; }
+  #app { width: 100vw; height: 100vh; position: relative; }
+  canvas { display: block; }
+
+  .top-bar {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 10;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent);
+    padding: 16px 24px;
+  }
+  .top-bar h1 { font-size: 20px; font-weight: 700; }
+  .top-bar p { font-size: 12px; color: #666; margin-top: 2px; }
+
+  .category-bar {
+    position: absolute; top: 70px; left: 16px; right: 16px; z-index: 10;
+    display: flex; gap: 8px; overflow-x: auto;
+    padding: 8px 0;
+    scrollbar-width: thin;
+    scrollbar-color: #333 transparent;
+  }
+  .cat-btn {
+    padding: 10px 18px; border-radius: 12px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #aaa; font-size: 13px; cursor: pointer;
+    white-space: nowrap; transition: all 0.2s;
+    font-family: inherit;
+  }
+  .cat-btn:hover { background: rgba(255,255,255,0.12); color: #fff; }
+  .cat-btn.active { background: rgba(87,240,189,0.15); border-color: #57f0bd; color: #57f0bd; font-weight: 600; }
+
+  .info-panel {
+    position: absolute; bottom: 24px; left: 16px; right: 16px; z-index: 10;
+    display: flex; gap: 12px; align-items: center;
+    background: rgba(16,18,24,0.9); backdrop-filter: blur(16px);
+    padding: 16px 20px; border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.08);
+    flex-wrap: wrap;
+  }
+  .info-section { display: flex; flex-direction: column; gap: 4px; min-width: 120px; }
+  .info-label { font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 0.05em; }
+  .info-value { font-size: 14px; font-weight: 600; color: #eee; }
+  .info-value.trust { color: #57f0bd; }
+  .info-value.count { color: #ffa040; }
+  .info-value.cat { color: #a78bfa; }
+
+  .slider-area {
+    display: flex; flex-direction: column; gap: 4px; min-width: 180px;
+  }
+  .slider-area label { font-size: 11px; color: #555; }
+  .slider-area input[type="range"] { width: 100%; accent-color: #57f0bd; cursor: pointer; }
+  .slider-area .val { font-size: 13px; color: #57f0bd; font-weight: 700; text-align: center; }
+
+  .btn { padding: 10px 16px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.06); color: #eee; cursor: pointer; font-size: 12px; font-family: inherit; transition: all 0.2s; }
+  .btn:hover { background: rgba(255,255,255,0.14); }
+  .btn.primary { background: #57f0bd; color: #04211a; font-weight: 600; border: none; }
+
+  .parts-list {
+    position: absolute; top: 130px; right: 16px; z-index: 10;
+    width: 200px;
+    background: rgba(16,18,24,0.85); backdrop-filter: blur(16px);
+    border-radius: 14px; border: 1px solid rgba(255,255,255,0.08);
+    padding: 14px;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+  .parts-list h3 { font-size: 13px; margin-bottom: 10px; color: #57f0bd; }
+  .part-item {
+    padding: 8px 10px; border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.06);
+    margin-bottom: 4px; cursor: pointer;
+    font-size: 12px; color: #999; transition: all 0.15s;
+  }
+  .part-item:hover { border-color: rgba(87,240,189,0.3); color: #ccc; }
+  .part-item.active { border-color: #57f0bd; background: rgba(87,240,189,0.1); color: #fff; }
+
+  @media(max-width: 768px) {
+    .parts-list { display: none; }
+    .info-panel { flex-wrap: wrap; }
+    .info-section { min-width: 80px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="top-bar">
+    <h1>多品类参数化 3D Builder</h1>
+    <p>不同品类生成不同几何 — 非方块模板 · PBR 材质 · 概念拆解</p>
+  </div>
+
+  <div class="category-bar">
+    <button class="cat-btn active" data-cat="furniture">家具</button>
+    <button class="cat-btn" data-cat="electronics">电子设备</button>
+    <button class="cat-btn" data-cat="bottle_container">瓶装容器</button>
+    <button class="cat-btn" data-cat="vehicle">汽车</button>
+    <button class="cat-btn" data-cat="footwear">运动鞋</button>
+  </div>
+
+  <div class="parts-list" id="parts-list">
+    <h3>部件列表</h3>
+    <div id="parts-container"></div>
+  </div>
+
+  <div class="info-panel">
+    <div class="info-section">
+      <div class="info-label">品类</div>
+      <div class="info-value cat" id="info-cat">家具</div>
+    </div>
+    <div class="info-section">
+      <div class="info-label">部件数</div>
+      <div class="info-value count" id="info-parts">7</div>
+    </div>
+    <div class="info-section">
+      <div class="info-label">真实性</div>
+      <div class="info-value trust" id="info-trust">概念拆解</div>
+    </div>
+    <div class="slider-area">
+      <label>拆解程度</label>
+      <input type="range" id="explode-slider" min="0" max="100" value="0" oninput="updateExplode(this.value)">
+      <div class="val" id="explode-val">0%</div>
+    </div>
+    <button class="btn" onclick="resetView()">重置视角</button>
+    <button class="btn primary" onclick="setExplode(100)">完全拆解</button>
+    <button class="btn" onclick="toggleAutoRotate()">自动旋转</button>
+  </div>
+</div>
+
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// --- Setup ---
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0e14);
+scene.fog = new THREE.Fog(0x0a0e14, 8, 20);
+const camera = new THREE.PerspectiveCamera(40, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(2.5, 1.8, 3);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+document.getElementById('app').appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.enablePan = false;
+controls.minDistance = 1.5; controls.maxDistance = 6;
+
+// Lights
+scene.add(new THREE.AmbientLight(0x303040, 0.6));
+const dir1 = new THREE.DirectionalLight(0xffffff, 1.3); dir1.position.set(4,6,4); dir1.castShadow=true; scene.add(dir1);
+const dir2 = new THREE.DirectionalLight(0x6080c0, 0.3); dir2.position.set(-3,4,-2); scene.add(dir2);
+const rim = new THREE.DirectionalLight(0x57f0bd, 0.12); rim.position.set(0,-2,-3); scene.add(rim);
+
+// Ground
+const ground = new THREE.Mesh(new THREE.CircleGeometry(10, 48), new THREE.MeshStandardMaterial({ color:0x12161c, roughness:0.95 }));
+ground.rotation.x = -Math.PI/2; ground.position.y = -0.55; ground.receiveShadow = true; scene.add(ground);
+
+// --- Materials ---
+function mat(color, rough=0.5, metal=0.1, transparent=false) {
+  return new THREE.MeshStandardMaterial({ color:new THREE.Color(color), roughness:rough, metalness:metal, transparent, opacity:transparent?0.35:1 });
+}
+const M = {
+  wood: mat('#a67c52', 0.65, 0.05), woodDark: mat('#7a5a3a', 0.58, 0.08),
+  fabric: mat('#8a9a8e', 0.82, 0.02), metal: mat('#b0b0b0', 0.25, 0.8),
+  plastic: mat('#333', 0.55, 0.1), glass: mat('#c8e0d8', 0.08, 0.1, true),
+  rubber: mat('#222', 0.9, 0), screen: mat('#1a1a3e', 0.08, 0.2),
+  paint: mat('#cc2222', 0.35, 0.15), gold: mat('#c8a050', 0.25, 0.7),
+  white: mat('#f0f0f0', 0.8, 0), blue: mat('#2a3a6a', 0.75, 0.02),
+  bottleGlass: mat('#b8d8c8', 0.1, 0.15, true),
+};
+
+// --- Part builders ---
+function buildFurniture() {
+  const parts = [];
+  // Seat
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.5, 2, 1, 2), M.fabric);
+  seat.position.y = 0.44; seat.castShadow = true;
+  parts.push({ mesh: seat, name: '坐垫', role: 'seat', explode: [0, 0.6, 0.5] });
+  // Backrest
+  const back = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.5, 0.05), M.wood);
+  back.position.set(0, 0.72, -0.21); back.rotation.x = -0.12; back.castShadow = true;
+  parts.push({ mesh: back, name: '弧形靠背', role: 'backrest', explode: [0, 1.2, -0.7] });
+  // Frame
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.05, 0.52), M.woodDark);
+  frame.position.y = 0.38; frame.castShadow = true;
+  parts.push({ mesh: frame, name: '支撑结构', role: 'frame', explode: [0, -0.3, -0.8] });
+  // Legs (4 cylinders)
+  const legPos = [[-0.18,0.18],[0.18,0.18],[-0.18,-0.18],[0.18,-0.18]];
+  legPos.forEach(([x,z], i) => {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.02, 0.36, 12), M.wood);
+    leg.position.set(x, 0.18, z); leg.castShadow = true;
+    parts.push({ mesh: leg, name: `椅腿 ${i+1}`, role: 'leg', explode: [x*3, -1, z*3] });
+  });
+  return parts;
+}
+
+function buildElectronics() {
+  const parts = [];
+  // Body
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.08, 0.2), mat('#2a2a2e', 0.35, 0.8));
+  body.castShadow = true;
+  parts.push({ mesh: body, name: '机身', role: 'body', explode: [0, 0.2, 0] });
+  // Screen
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.16), M.screen);
+  screen.rotation.x = -Math.PI/2; screen.position.y = 0.042;
+  parts.push({ mesh: screen, name: '屏幕', role: 'screen', explode: [0, 1, 0.3] });
+  // Buttons (3)
+  for (let i = 0; i < 3; i++) {
+    const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.01, 8), mat('#444', 0.4, 0.5));
+    btn.position.set(0.08 - i*0.04, 0.045, 0.11);
+    parts.push({ mesh: btn, name: `按钮 ${i+1}`, role: 'button', explode: [0.5-i*0.3, 0.8, 0.8] });
+  }
+  return parts;
+}
+
+function buildBottle() {
+  const parts = [];
+  // Body — lathe
+  const pts = [];
+  for (let i = 0; i <= 12; i++) {
+    const t = i/12, y = t*0.35;
+    const r = 0.05*(1-t*0.2)*(1+Math.sin(t*Math.PI)*0.1);
+    pts.push(new THREE.Vector2(Math.max(r,0.012), y));
+  }
+  const body = new THREE.Mesh(new THREE.LatheGeometry(pts, 24), M.bottleGlass);
+  body.castShadow = true;
+  parts.push({ mesh: body, name: '瓶身', role: 'body', explode: [0, 0, 0] });
+  // Cap
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.024, 0.04, 16), M.gold);
+  cap.position.y = 0.37; cap.castShadow = true;
+  parts.push({ mesh: cap, name: '瓶盖', role: 'cap', explode: [0, 1.4, 0] });
+  // Label
+  const label = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.052, 0.1, 24, 1, true), mat('#e8e0d0', 0.7, 0));
+  label.position.y = 0.16;
+  parts.push({ mesh: label, name: '标签', role: 'label', explode: [1, 0.3, 0] });
+  return parts;
+}
+
+function buildVehicle() {
+  const parts = [];
+  // Body
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.18, 0.5), M.paint);
+  body.position.y = 0.15; body.castShadow = true;
+  parts.push({ mesh: body, name: '车身', role: 'body', explode: [0, 0.2, 0] });
+  // Cabin
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.15, 0.42), M.screen);
+  cabin.position.set(-0.05, 0.32, 0); cabin.castShadow = true;
+  parts.push({ mesh: cabin, name: '座舱', role: 'cabin', explode: [0, 1.2, 0] });
+  // Wheels
+  const wPos = [[-0.4,0.22],[0.4,0.22],[-0.4,-0.22],[0.4,-0.22]];
+  wPos.forEach(([x,z], i) => {
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.07, 16), M.rubber);
+    wheel.rotation.z = Math.PI/2; wheel.position.set(x, 0.1, z); wheel.castShadow = true;
+    parts.push({ mesh: wheel, name: `车轮 ${i+1}`, role: 'wheel', explode: [x*1.5, -0.8, z*3] });
+  });
+  return parts;
+}
+
+function buildShoe() {
+  const parts = [];
+  // Sole
+  const sole = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.04, 0.11), M.white);
+  sole.castShadow = true;
+  parts.push({ mesh: sole, name: '鞋底', role: 'sole', explode: [0, -1, 0] });
+  // Upper
+  const upper = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.1, 0.1), M.blue);
+  upper.position.set(0.035, 0.07, 0); upper.castShadow = true;
+  parts.push({ mesh: upper, name: '鞋面', role: 'upper', explode: [0, 0.8, 0] });
+  // Heel
+  const heel = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.11, 0.095), M.blue);
+  heel.position.set(-0.1, 0.075, 0); heel.castShadow = true;
+  parts.push({ mesh: heel, name: '后跟', role: 'heel', explode: [-1, 0.5, -0.5] });
+  // Tongue
+  const tongue = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.02, 0.06), mat('#fff', 0.7, 0));
+  tongue.position.set(0.06, 0.125, 0);
+  parts.push({ mesh: tongue, name: '鞋舌', role: 'tongue', explode: [0.5, 1.2, 0] });
+  return parts;
+}
+
+const builders = {
+  furniture: buildFurniture,
+  electronics: buildElectronics,
+  bottle_container: buildBottle,
+  vehicle: buildVehicle,
+  footwear: buildShoe,
+};
+const catLabels = { furniture: '家具', electronics: '电子设备', bottle_container: '瓶装容器', vehicle: '汽车', footwear: '运动鞋' };
+
+let currentParts = [];
+let currentGroup = new THREE.Group();
+scene.add(currentGroup);
+let selectedPart = null;
+let autoRotate = false;
+let currentCat = 'furniture';
+
+function loadCategory(cat) {
+  currentCat = cat;
+  // Clear
+  while (currentGroup.children.length) currentGroup.remove(currentGroup.children[0]);
+  selectedPart = null;
+
+  const builder = builders[cat] || builders.furniture;
+  currentParts = builder();
+  currentParts.forEach(p => { currentGroup.add(p.mesh); p._orig = p.mesh.material; });
+
+  // Update UI
+  document.getElementById('info-cat').textContent = catLabels[cat] || cat;
+  document.getElementById('info-parts').textContent = currentParts.length;
+  document.querySelectorAll('.cat-btn').forEach(b => b.classList.toggle('active', b.dataset.cat === cat));
+
+  // Parts list
+  const container = document.getElementById('parts-container');
+  container.innerHTML = currentParts.map((p,i) => `<div class="part-item" data-idx="${i}" onclick="selectPart(${i})">${p.name}</div>`).join('');
+
+  // Reset camera
+  camera.position.set(2.5, 1.8, 3);
+  controls.target.set(0, 0.3, 0);
+  controls.update();
+  setExplode(0);
+}
+
+window.selectPart = (idx) => {
+  if (selectedPart !== null && currentParts[selectedPart]) {
+    currentParts[selectedPart].mesh.material = currentParts[selectedPart]._orig;
+  }
+  if (selectedPart === idx) { selectedPart = null; updatePartUI(); return; }
+  selectedPart = idx;
+  const p = currentParts[idx];
+  p.mesh.material = mat('#57f0bd', 0.3, 0.3);
+  updatePartUI();
+};
+function updatePartUI() {
+  document.querySelectorAll('.part-item').forEach((el,i) => el.classList.toggle('active', i === selectedPart));
+}
+
+window.updateExplode = (val) => {
+  const t = val / 100;
+  document.getElementById('explode-val').textContent = val + '%';
+  currentParts.forEach((p, i) => {
+    const e = p.explode;
+    p.mesh.position.set(e[0]*t, (p._baseY ?? 0) + e[1]*t, e[2]*t);
+    if (p._baseY === undefined) p._baseY = p.mesh.position.y - e[1]*0;
+  });
+  // Recalculate: store base positions properly
+  currentParts.forEach(p => {
+    if (p._bx === undefined) {
+      // capture base on first call
+    }
+  });
+};
+// Fix base position tracking
+const origLoad = loadCategory;
+window.loadCategory = (cat) => { origLoad(cat); currentParts.forEach(p => { p._bx = p.mesh.position.x; p._by = p.mesh.position.y; p._bz = p.mesh.position.z; }); };
+// Re-bind updateExplode with proper base tracking
+window.updateExplode = (val) => {
+  const t = val / 100;
+  document.getElementById('explode-val').textContent = val + '%';
+  currentParts.forEach((p) => {
+    const e = p.explode;
+    p.mesh.position.set((p._bx||0)+e[0]*t, (p._by||0)+e[1]*t, (p._bz||0)+e[2]*t);
+  });
+};
+window.setExplode = (v) => { document.getElementById('explode-slider').value = v; window.updateExplode(v); };
+window.resetView = () => { camera.position.set(2.5,1.8,3); controls.target.set(0,0.3,0); controls.update(); };
+window.toggleAutoRotate = () => { autoRotate=!autoRotate; controls.autoRotate=autoRotate; controls.autoRotateSpeed=1.2; };
+
+document.querySelectorAll('.cat-btn').forEach(btn => {
+  btn.addEventListener('click', () => window.loadCategory(btn.dataset.cat));
+});
+
+// Resize
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// Animate
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+window.loadCategory('furniture');
+animate();
+</script>
+</body>
+</html>

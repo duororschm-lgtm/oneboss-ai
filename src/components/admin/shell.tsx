@@ -17,7 +17,7 @@ import {
 import { browserAuth } from '../customer/session';
 import { fetchWorkspace, MOCK_MODE, type AdminResult } from '../../lib/admin/api';
 import type { AdminWorkspacePayload } from '../../lib/admin/types';
-import { ROLE_LABEL, resolveRole } from '../../lib/admin/permissions';
+import { ROLE_LABEL, resolveRole, can, type Capability } from '../../lib/admin/permissions';
 import { ErrorState, ForbiddenState, MockBanner, SkeletonRows } from './states';
 
 interface AdminContextValue {
@@ -107,7 +107,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
     [email, workspace, load],
   );
 
-  const role = resolveRole(workspace?.ok === true);
+  const role = resolveRole(workspace?.ok === true,workspace?.ok ? workspace.data.role : undefined);
   const current = NAV.find(
     (item) => pathname === item.href || (item.href !== '/admin' && pathname.startsWith(item.href)),
   );

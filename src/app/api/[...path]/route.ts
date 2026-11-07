@@ -69,8 +69,9 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
     if (route === 'commerce/payment-methods' && method === 'GET')
       return response({
         wechatNative: wechatAvailable(),
-        manualVerified: !!manualPaymentDetails(),
+        manualVerified: !!(manualPaymentDetails('wechat') || manualPaymentDetails('alipay')),
         manual: manualPaymentDetails(),
+        manualChannels: { wechat: manualPaymentDetails('wechat'), alipay: manualPaymentDetails('alipay') },
         sandbox: false,
       });
     if (route === 'commerce/payments/webhook/wechat' && method === 'POST') {
@@ -93,7 +94,7 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
       }
       return response(await registerAccount(request, body), 201);
     }
-    const actor = await authenticate(request);
+    const actor = { ...(await authenticate(request)), requestId };
     await service.rateLimit(actor);
     if (route === 'core/admin' && method === 'GET')
       return response(await transaction(actor, (tx) => adminWorkspace(tx, actor)));
@@ -353,10 +354,10 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
           }
           if (route === 'commerce/orders') {
             const b = z
-              .object({ orgId: Id, quoteId: Id, isDemo: z.boolean() })
+              .object({ orgId: Id, quoteId: Id, isDemo: z.boolean(), paymentChannel: z.enum(['wechat','alipay']).optional() })
               .strict()
               .parse(body);
-            return service.createOrder(tx, b.orgId, b.quoteId, b.isDemo);
+            return service.createOrder(tx, b.orgId, b.quoteId, b.isDemo, b.paymentChannel);
           }
           if (route === 'core/projects') {
             const b = z.object({ orderId: Id }).strict().parse(body);
@@ -367,10 +368,14 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
               action = path[3];
             if (action === 'checkout') {
               const b = z
-                .object({ channel: z.enum(['sandbox', 'manual_verified']) })
+                .object({ channel: z.enum(['sandbox', 'manual_verified']), paymentChannel: z.enum(['wechat','alipay']).optional() })
                 .strict()
                 .parse(body);
-              return service.checkout(tx, actor, id, b.channel);
+              if (b.channel === 'manual_verified') {
+                const current = await service.order(tx, actor, id);
+                assert(manualPaymentDetails(b.paymentChannel || current.payment_channel || 'wechat'), 'MANUAL_CHANNEL_NOT_CONFIGURED', 503);
+              }
+              return service.checkout(tx, actor, id, b.channel, b.paymentChannel);
             }
             if (action === 'report-manual-payment') {
               const b = z
@@ -436,16 +441,26 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
             }
             if (action === 'approve-design') {
               const b = z
-                  .object({ runId: Id, styleId: z.string().max(100) })
+                  .object({
+                    runId: Id,
+                    directionId: z.uuid().optional(),
+                    styleId: z.string().max(100).optional(),
+                  })
                   .strict()
+                  .refine((v) => v.directionId || v.styleId, {
+                    message: 'directionId or styleId required',
+                  })
                   .parse(body),
                 p = await service.project(tx, actor, id);
               await service.entitlement(tx, p);
               const [run] =
                 await tx`select output,input from agent_runs where id=${b.runId} and project_id=${id} and role='design' and status='SUCCEEDED'`;
               assert(run && run.input.factVersion === p.fact_version, 'DESIGN_NOT_READY');
-              const choices = DesignChoices.parse(run.output),
-                choice = choices.choices.find((c) => c.styleId === b.styleId);
+              const choices = DesignChoices.parse(run.output);
+              // directionId (server-assigned) is the primary selection key; styleId remains for legacy runs.
+              const choice = b.directionId
+                ? choices.choices.find((c) => c.directionId === b.directionId)
+                : choices.choices.find((c) => c.styleId === b.styleId);
               assert(choice, 'STYLE_NOT_FOUND');
               const [{ revision }] =
                 await tx`select coalesce(max(revision),0)+1 revision from design_systems where project_id=${id}`;

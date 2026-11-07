@@ -1,4 +1,5 @@
 import type { Actor, Tx } from './db';
+import { capabilitiesFor } from '../admin/permissions';
 import { member, project, platformAdmin } from './service';
 
 /** Every query is tenant scoped; never derive access from a browser-selected organization. */
@@ -16,14 +17,16 @@ export async function accountWorkspace(tx: Tx, actor: Actor) {
   };
 }
 export async function adminWorkspace(tx: Tx, actor: Actor) {
-  await platformAdmin(tx, actor);
+  const role = await platformAdmin(tx, actor);
   return {
+    role,
+    capabilities: [...capabilitiesFor(role)],
     orders:
       await tx`select o.id,o.order_no,o.org_id,o.pay_state,o.amount_minor,o.is_demo,o.created_at,o.plan_snapshot->>'name' as plan_name,g.name as organization from service_orders o join organizations g on g.id=o.org_id order by o.created_at desc limit 100`,
-    refunds:
-      await tx`select r.id,r.order_id,r.amount_minor,r.status,r.created_at,r.provider_ref,o.order_no,o.plan_snapshot->>'name' as plan_name from refunds r join service_orders o on o.id=r.order_id order by r.created_at desc limit 100`,
-    manualAttempts:
-      await tx`select a.id,a.order_id,a.amount_minor,a.created_at,o.order_no,o.plan_snapshot->>'name' as plan_name,left(o.id::text,8) as payment_memo,r.details as customer_report,r.created_at as reported_at from payment_attempts a join service_orders o on o.id=a.order_id left join lateral(select details,created_at from manual_payment_reports where attempt_id=a.id order by created_at desc limit 1) r on true where a.provider='manual_verified' and a.status='PENDING' and o.pay_state='PENDING_CONFIRMATION' order by a.created_at desc limit 100`,
+    refunds: ['owner','finance'].includes(role) ?
+      await tx`select r.id,r.order_id,r.amount_minor,r.status,r.created_at,r.provider_ref,o.order_no,o.plan_snapshot->>'name' as plan_name from refunds r join service_orders o on o.id=r.order_id order by r.created_at desc limit 100` : [],
+    manualAttempts: ['owner','finance'].includes(role) ?
+      await tx`select a.id,a.order_id,a.amount_minor,a.created_at,a.payment_channel,o.order_no,o.plan_snapshot->>'name' as plan_name,left(o.id::text,8) as payment_memo,r.details as customer_report,r.created_at as reported_at from payment_attempts a join service_orders o on o.id=a.order_id left join lateral(select details,created_at from manual_payment_reports where attempt_id=a.id order by created_at desc limit 1) r on true where a.provider='manual_verified' and a.status='PENDING' and o.pay_state='PENDING_CONFIRMATION' order by a.created_at desc limit 100` : [],
   };
 }
 
@@ -53,6 +56,7 @@ export async function projectWorkspace(tx: Tx, actor: Actor, id: string) {
       await tx`select revision,body,approved_at from design_systems where project_id=${p.id} order by revision desc limit 20`,
     versions:
       await tx`select revision,fact_version,status,body,approved_by,created_at from artifact_versions where project_id=${p.id} order by revision desc limit 30`,
-    runs: await tx`select id,role,status,attempt,error_class,usage,output,created_at,completed_at,(input->>'factVersion')::int as "factVersion" from agent_runs where project_id=${p.id} order by created_at desc limit 100`,
+    events: await tx`select e.id,e.run_id,e.status,e.stage,e.attempt,e.error_class,e.created_at from task_events e join agent_runs r on r.id=e.run_id where r.project_id=${p.id} and e.org_id=${p.org_id} order by e.id desc limit 200`,
+    runs: await tx`select id,role,employee_key,stage,status,attempt,error_class,usage,output,created_at,completed_at,(input->>'factVersion')::int as "factVersion" from agent_runs where project_id=${p.id} order by created_at desc limit 100`,
   };
 }
