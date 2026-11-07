@@ -511,7 +511,13 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
         {
           error: {
             code: 'VALIDATION_FAILED',
+            // 带上 issue code 和多余的键名：否则 unrecognized_keys 这类根级错误只会显示空字段名。
             fields: error.issues.map((i) => i.path.join('.')),
+            issues: error.issues.map((i) => ({
+              path: i.path.join('.'),
+              code: i.code,
+              ...('keys' in i && Array.isArray(i.keys) ? { keys: i.keys } : {}),
+            })),
             requestId,
           },
         },
