@@ -29,7 +29,8 @@ export const typographySchema = z.object({
   display: z.string().min(1),
   body: z.string().min(1),
   mono: z.string().min(1),
-  scale: z.number().min(0.8).max(1.4),
+  // 模型常把字号比例写成 "1.15" 这样的字符串；它只是数，不该让整页崩掉。
+  scale: z.coerce.number().min(0.8).max(1.4),
 });
 
 export const designSystemSchema = z.object({
@@ -127,11 +128,13 @@ export const sectionLayoutSchema = z
       .regex(/^[a-z0-9-]{1,60}$/)
       .optional(),
     columns: z.number().int().min(1).max(4).optional(),
-    alignment: z.enum(['left', 'center', 'right']).optional(),
-    width: z.enum(['narrow', 'standard', 'wide', 'full']).optional(),
-    emphasis: z.enum(['image-led', 'text-led', 'balanced']).optional(),
-    background: z.enum(['plain', 'surface', 'inverted', 'accent']).optional(),
-    imageRatio: z.enum(['square', 'portrait', 'landscape', 'wide']).optional(),
+    // 布局枚举一律用 catch 兜底：模型偶尔给出枚举外的值（如 background:"gradient"），
+    // 那是内容偏差，不该让整个预览/发布链路抛 ZodError 崩掉。
+    alignment: z.enum(['left', 'center', 'right']).optional().catch('left'),
+    width: z.enum(['narrow', 'standard', 'wide', 'full']).optional().catch('standard'),
+    emphasis: z.enum(['image-led', 'text-led', 'balanced']).optional().catch('balanced'),
+    background: z.enum(['plain', 'surface', 'inverted', 'accent']).optional().catch('plain'),
+    imageRatio: z.enum(['square', 'portrait', 'landscape', 'wide']).optional().catch('landscape'),
   })
   .partial()
   .optional();
