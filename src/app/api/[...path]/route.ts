@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { authenticate } from '../../../lib/security/auth';
+import { registerAccount } from '../../../lib/security/registration';
 import { AppError, assert } from '../../../lib/core/errors';
 import { database, transaction, type Tx } from '../../../lib/core/db';
 import * as service from '../../../lib/core/service';
@@ -82,6 +83,16 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
     // Every unsupported provider fails closed; browser JSON never counts as payment evidence.
     if (route.startsWith('commerce/payments/webhook/'))
       throw new AppError('LIVE_PROVIDER_NOT_CONFIGURED', 503);
+    if (route === 'auth/register' && method === 'POST') {
+      let body: unknown;
+      try {
+        body = JSON.parse((await readBytes(request, 4096)).toString('utf8'));
+      } catch (error) {
+        if (error instanceof AppError) throw error;
+        throw new AppError('INVALID_JSON', 400);
+      }
+      return response(await registerAccount(request, body), 201);
+    }
     const actor = await authenticate(request);
     await service.rateLimit(actor);
     if (route === 'core/admin' && method === 'GET')

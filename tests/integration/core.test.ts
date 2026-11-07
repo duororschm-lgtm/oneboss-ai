@@ -19,6 +19,7 @@ import { createDelivery } from '../../src/lib/delivery/service';
 import { previewProject } from '../../src/lib/publishing/service';
 import { accountWorkspace, projectWorkspace } from '../../src/lib/core/workspace';
 import { adminWorkspace } from '../../src/lib/core/workspace';
+import { registrationLimit } from '../../src/lib/security/registration';
 import * as browserQA from '../../src/lib/publishing/browser';
 import * as wxProvider from '../../src/lib/commerce/wechat-provider';
 import {
@@ -65,6 +66,25 @@ afterAll(async () => {
   await closeDatabase();
 });
 describe.sequential('real PostgreSQL business invariants', () => {
+  it('atomically caps anonymous signup attempts despite concurrent requests with changing network hints', async () => {
+    const secret = randomUUID();
+    const attempts = await Promise.allSettled(
+      Array.from({ length: 21 }, (_, index) =>
+        registrationLimit(
+          new Request('https://oneboss.example/api/auth/register', {
+            headers: { 'x-forwarded-for': `203.0.113.${index + 1}` },
+          }),
+          `customer_${index}`,
+          secret,
+        ),
+      ),
+    );
+    expect(attempts.filter((result) => result.status === 'fulfilled')).toHaveLength(20);
+    expect(
+      (attempts.find((result) => result.status === 'rejected') as PromiseRejectedResult).reason
+        .code,
+    ).toBe('REGISTRATION_RATE_LIMITED');
+  });
   it('prices on server and freezes order snapshot', async () => {
     const q = await transaction(owner, (tx) => core.createQuote(tx, orgId, 'basic'));
     const o = await transaction(owner, (tx) => core.createOrder(tx, orgId, q.id, true));

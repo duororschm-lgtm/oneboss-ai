@@ -146,11 +146,11 @@ try {
   await page.goto(`${origin}/login`);
   await page.getByRole('button', { name: '还没有账户？注册', exact: true }).click();
   assert(
-    await page.getByRole('button', { name: '创建账户', exact: true }).isDisabled(),
-    'UNCONFIGURED_EMAIL_SIGNUP_MUST_NOT_PROMISE_DELIVERY',
+    !(await page.getByRole('button', { name: '创建账户', exact: true }).isDisabled()),
+    'USERNAME_SIGNUP_MUST_NOT_REQUIRE_EMAIL_DELIVERY',
   );
   await page.getByRole('button', { name: '已有账户？登录', exact: true }).click();
-  await page.getByLabel('邮箱', { exact: true }).fill(email);
+  await page.getByLabel('账号', { exact: true }).fill(email);
   await page.getByLabel('密码', { exact: true }).fill(password);
   await page.getByRole('button', { name: '登录并继续', exact: true }).click();
   phase = 'login-navigation';

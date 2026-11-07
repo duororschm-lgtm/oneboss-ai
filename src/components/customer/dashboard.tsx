@@ -114,7 +114,11 @@ export function Dashboard({ path }: { path: string[] }) {
                       ? '我的项目'
                       : '让下一个作品，开始发生。'}
                 </h1>
-                <p className="ob-muted">{session.user.email}</p>
+                <p className="ob-muted">
+                  {session.user.app_metadata.account_kind === 'username'
+                    ? session.user.user_metadata.username || '我的账号'
+                    : session.user.email}
+                </p>
               </div>
               <Link className="ob-button" href="/pricing">
                 开始新项目 ↗

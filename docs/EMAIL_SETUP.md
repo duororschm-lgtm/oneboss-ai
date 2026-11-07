@@ -1,13 +1,13 @@
-# 注册与找回密码的邮件发送
+# 原邮箱账户的邮件找回配置
 
-2026-11-07 实查：Supabase 自定义 SMTP 未启用。默认邮件仅面向项目团队成员，不能视作外部客户注册已就绪。没有关闭邮箱确认来绕过发信。
+普通客户使用账号和密码直接注册，不需要邮箱或 SMTP，详见 [账号注册说明](ACCOUNT_SETUP.md)。原有邮箱账户继续登录；邮件找回密码仍未开放，由用户明确暂缓配置。
 
-已保存 Site URL `https://oneboss-ai.onrender.com` 与允许回跳 `https://oneboss-ai.onrender.com/login`。
+2026-11-07 实查：Supabase 自定义 SMTP 未启用。已保存 Site URL `https://oneboss-ai.onrender.com` 与允许回跳 `https://oneboss-ai.onrender.com/login`。
 
-需要所有者准备一个允许发送事务邮件的 SMTP 账户。收件邮箱不等于 SMTP 发送授权；提供的客服邮箱不会自动获得发信权限。不要把邮箱密码或授权码发到聊天中。
+如以后需要启用旧邮箱账户的邮件找回，由所有者准备允许发送事务邮件的 SMTP 账户，并在 Supabase Authentication → Emails → SMTP Settings 私下填写发件邮箱、名称 BlackCode、host/port/user/password。客服邮箱本身不等于已获发信授权；密码或授权码不应提交到聊天或代码仓库。
 
-在 Supabase 项目 Authentication → Emails → SMTP Settings 中，由所有者私下填写：发件邮箱、发件人名称 BlackCode、SMTP host/port/user/password。根据发信服务商要求完成域名验证或开启发信授权；保留邮箱确认开启。保存后由所有者在网站测试注册确认邮件与重置密码邮件是否可达、链接是否返回 /login。
+完成服务商要求的发信授权/域名验证，保留真实邮箱的确认设置；实际验证重置邮件可达、链接返回 /login 后，再设置 CUSTOMER_EMAIL_READY=true。该标记只开放邮件找回入口，不影响普通账号注册，也不能替代真实邮箱验证。
 
-确认真实发信后，部署设置 `CUSTOMER_EMAIL_READY=true`，网站才开放外部邮箱注册与找回密码入口。标记不替代 Supabase 的邮箱验证。已有已确认账户登录与制作不依赖新发邮件。
+账号模式使用独立的非投递标识，不向该标识发邮件，也不把它显示成客户邮箱。账号用户遗忘密码暂需联系 BlackCode，微信18001132767。
 
-[Supabase 官方 SMTP 说明](https://supabase.com/docs/guides/auth/auth-smtp)说明默认邮件仅用于测试，外部收件人需要自定义发信服务。此前真实浏览器验收使用临时服务端创建的已确认测试用户，不是邮箱投递验收，也没有发真实邮件给他人。
+[Supabase 官方 SMTP 说明](https://supabase.com/docs/guides/auth/auth-smtp)介绍默认邮件的测试限制以及自定义事务发信配置。

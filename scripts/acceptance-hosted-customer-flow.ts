@@ -162,7 +162,7 @@ export async function verifyHostedCustomerFlow({
   try {
     phase('real-login-and-authorized-demo-order');
     await page.goto(`${origin}/login`);
-    await page.getByLabel('邮箱', { exact: true }).fill(email);
+    await page.getByLabel('账号', { exact: true }).fill(email);
     await page.getByLabel('密码', { exact: true }).fill(password);
     await page.getByRole('button', { name: '登录并继续', exact: true }).click();
     await page.waitForURL('**/dashboard');

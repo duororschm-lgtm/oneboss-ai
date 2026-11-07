@@ -24,7 +24,8 @@
     "acceptance:hosted": "tsx --env-file-if-exists=.env.local scripts/acceptance-hosted.ts",
     "acceptance:hosted:write": "tsx --env-file-if-exists=.env.local scripts/acceptance-hosted-write.ts",
     "acceptance:customer:ui": "tsx --env-file-if-exists=.env.local scripts/acceptance-customer-ui.ts",
-    "check:wechat": "tsx --env-file-if-exists=.env.local scripts/check-wechat.ts"
+    "check:wechat": "tsx --env-file-if-exists=.env.local scripts/check-wechat.ts",
+    "acceptance:registration": "tsx --env-file-if-exists=.env.local scripts/acceptance-registration.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.0.0",

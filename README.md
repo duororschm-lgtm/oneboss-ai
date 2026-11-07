@@ -2,7 +2,7 @@
 
 统一 Next.js 工程已接入 A 后端与实际 B 渲染引擎，并实现官网、套餐、真实登录、订单、产品资料、设计批准、预览、局部修改、发布与交付工作台。提供方 BlackCode。当前整站集成仍在验收，最新状态见 [项目完成矩阵](docs/PROJECT_COMPLETION.md)，历史 A/B 公网验收见 [验收证据](docs/A_ACCEPTANCE.md)。
 
-正式微信支付默认关闭，所有者已明确稍后配置商户。外部邮箱注册/重置需要自定义 SMTP，目前入口提示未开放；已有已确认账户可登录。没有把演示订单当作真实收款。
+微信商户自动支付默认关闭，目前使用微信收款码和人工到账核验。普通客户使用账号和密码直接注册，无需邮箱或验证码；原邮箱账户可继续登录。邮件找回仍需配置 SMTP。没有把演示订单当作真实收款。
 
 客户页面：`/`、`/pricing`、`/checkout`、`/login`、`/dashboard`、`/dashboard/projects/:id/intake|creative|studio|revise|delivery|agents`。平台审核：`/dashboard/admin`，要求已有 `platform_admins` 授权，不自动授予新账户权限。
 
@@ -29,7 +29,8 @@ npm run worker
 - [Windows 本地凭据填写](docs/LOCAL_SETUP_WINDOWS.md)
 - [人工核验微信收款](docs/MANUAL_PAYMENT.md)
 - [微信商户私下配置](docs/WECHAT_SETUP.md)
-- [外部注册发信配置](docs/EMAIL_SETUP.md)
+- [账号密码注册](docs/ACCOUNT_SETUP.md)
+- [旧邮箱找回配置](docs/EMAIL_SETUP.md)
 - [A 后端 Docker / Render 开发部署](docs/DEPLOY_RENDER.md)
 - [当前验证证据与未完成项](docs/demo-proof.md)
 - [开源选型记录](docs/opensource-audit-a.md)

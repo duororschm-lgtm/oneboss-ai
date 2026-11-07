@@ -4,6 +4,16 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { browserAuth, useCustomer } from './session';
 import { Notice } from './shell';
+import { loginEmail } from '../../lib/customer/account';
+import { requestCustomerJSON } from '../../lib/customer/request';
+
+const signupErrors: Record<string, string> = {
+  ACCOUNT_INVALID: '账号需为 3–32 位中文、字母、数字或下划线，不能使用邮箱。',
+  ACCOUNT_EXISTS: '账号已存在。若刚才已提交注册，请用相同账号和密码直接登录。',
+  PASSWORD_WEAK: '请使用至少 10 位且不常见的独立密码。',
+  REGISTRATION_RATE_LIMITED: '注册尝试较频繁，请稍后再试。',
+  VALIDATION_FAILED: '请检查账号和密码，密码需要 10–128 位。',
+};
 
 export function Login() {
   const router = useRouter(),
@@ -37,12 +47,15 @@ export function Login() {
     setError('');
     setMessage('');
     const fields = new FormData(event.currentTarget),
-      email = String(fields.get('email') || ''),
+      account = String(fields.get('account') || ''),
       password = String(fields.get('password') || '');
     try {
       const auth = browserAuth().auth;
       if (mode === 'login') {
-        const result = await auth.signInWithPassword({ email, password });
+        const result = await auth.signInWithPassword({
+          email: await loginEmail(account),
+          password,
+        });
         if (result.error) {
           console.warn(
             JSON.stringify({
@@ -54,24 +67,29 @@ export function Login() {
           throw new Error(
             result.error.name === 'AuthRetryableFetchError'
               ? '暂时无法连接登录服务，请检查网络后重试。'
-              : '登录失败，请核对邮箱和密码；新账户需要先确认邮箱。',
+              : '登录失败，请核对账号和密码。已有邮箱账户也可用原邮箱登录。',
           );
         }
         router.replace(target);
       } else if (mode === 'register') {
-        const result = await auth.signUp({
-          email,
-          password,
-          options: { emailRedirectTo: `${window.location.origin}/login` },
+        const { response, value } = await requestCustomerJSON('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: account, password }),
         });
-        if (result.error) throw new Error('注册暂未完成。请检查邮箱和密码，或稍后重试。');
-        setMessage(
-          result.data.session
-            ? '注册完成，正在进入工作台。'
-            : '请查看邮箱中的确认邮件，确认后回到这里登录。如果已有账户，请直接登录。',
-        );
+        if (!response.ok)
+          throw new Error(signupErrors[value.error?.code] || '暂时无法注册，请稍后再试。');
+        const result = await auth.signInWithPassword({
+          email: await loginEmail(account),
+          password,
+        });
+        if (result.error) {
+          setMode('login');
+          throw new Error('账号已创建，请使用刚才的账号和密码登录。');
+        }
+        router.replace(target);
       } else if (mode === 'reset') {
-        const result = await auth.resetPasswordForEmail(email, {
+        const result = await auth.resetPasswordForEmail(account.trim(), {
           redirectTo: `${window.location.origin}/login`,
         });
         if (result.error) throw new Error('暂时无法发送重置邮件，请稍后重试。');
@@ -84,7 +102,9 @@ export function Login() {
         router.replace('/dashboard');
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : '暂时无法连接登录服务。');
+      setError(
+        e instanceof Error ? signupErrors[e.message] || e.message : '暂时无法连接登录服务。',
+      );
     } finally {
       setBusy(false);
     }
@@ -114,23 +134,40 @@ export function Login() {
         </h2>
         {error && <Notice error>{error}</Notice>}
         {message && <Notice>{message}</Notice>}
-        {(mode === 'register' || mode === 'reset') && !emailReady && (
+        {mode === 'register' && (
+          <p>只需设置账号和密码即可注册，无需邮箱或验证码。账号不区分英文字母大小写。</p>
+        )}
+        {mode === 'login' && <p className="ob-muted">已有邮箱账户也可使用原邮箱和密码登录。</p>}
+        {mode === 'reset' && !emailReady && (
           <Notice>
-            外部邮箱的注册和找回密码暂未开放。已有账户可直接登录；需要体验请联系 BlackCode，微信
-            18001132767。
+            邮件找回密码暂未开放。账号密码请妥善保存；忘记密码请联系 BlackCode，微信 18001132767。
           </Notice>
         )}
         <form className="ob-form" onSubmit={submit}>
           {mode !== 'update' && (
             <label>
-              邮箱
-              <input name="email" type="email" autoComplete="email" required maxLength={254} />
+              {mode === 'reset' ? '邮箱' : '账号'}
+              <input
+                aria-label={mode === 'reset' ? '邮箱' : '账号'}
+                name="account"
+                type={mode === 'reset' ? 'email' : 'text'}
+                autoComplete={mode === 'reset' ? 'email' : 'username'}
+                required
+                minLength={mode === 'register' ? 3 : 1}
+                maxLength={mode === 'register' ? 32 : 254}
+                autoCapitalize="none"
+                spellCheck={false}
+              />
+              {mode === 'register' && (
+                <small>3–32 位中文、字母、数字或下划线。不要填写邮箱。</small>
+              )}
             </label>
           )}
           {mode !== 'reset' && (
             <label>
               密码
               <input
+                aria-label="密码"
                 name="password"
                 type="password"
                 minLength={mode === 'login' ? 1 : 10}
@@ -142,9 +179,8 @@ export function Login() {
             </label>
           )}
           {mode === 'register' && (
-            <label className="ob-check">
-              <input type="checkbox" required />
-              我已阅读并同意{' '}
+            <p className="ob-muted">
+              点击创建账户即表示你同意{' '}
               <Link href="/terms" target="_blank">
                 服务说明
               </Link>{' '}
@@ -152,12 +188,9 @@ export function Login() {
               <Link href="/privacy" target="_blank">
                 隐私说明
               </Link>
-            </label>
+            </p>
           )}
-          <button
-            className="ob-button"
-            disabled={busy || (!emailReady && (mode === 'register' || mode === 'reset'))}
-          >
+          <button className="ob-button" disabled={busy || (!emailReady && mode === 'reset')}>
             {busy
               ? '正在处理…'
               : mode === 'login'
