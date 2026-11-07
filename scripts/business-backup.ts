@@ -68,9 +68,24 @@ try {
     const bytes = await readFile(`.cache/business-backups/${id}.oneboss`);
     const key = await readFile(`.secrets/backup-keys/${id}.key`);
     const backup = decryptBackup(bytes, key);
-    console.log(
-      JSON.stringify(await restoreBusiness(backup, process.env.RESTORE_DATABASE_URL || '')),
+    const restored = await restoreBusiness(backup, process.env.RESTORE_DATABASE_URL || '');
+    const reportPath = `.cache/business-backups/${id}.json`;
+    const report = JSON.parse(await readFile(reportPath, 'utf8'));
+    assert(report.archiveSha256 === digest(bytes), 'BACKUP_REPORT_ARCHIVE_MISMATCH');
+    await writeFile(
+      reportPath,
+      JSON.stringify(
+        {
+          ...report,
+          restoreVerified: true,
+          lastRestore: restored.database,
+          restoredAt: new Date().toISOString(),
+        },
+        null,
+        2,
+      ),
     );
+    console.log(JSON.stringify(restored));
   } else throw Error('USE_CREATE_OR_RESTORE');
 } catch (error) {
   // Database/Storage SDK error messages may contain sensitive details; emit only a safe code.
