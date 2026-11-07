@@ -350,7 +350,8 @@
   gap: 8px;
   font-weight: 550;
 }
-.ob-app input:not([type='checkbox']),
+/* 单选框/复选框不能被全宽规则命中，否则会把同行文字挤成一列。 */
+.ob-app input:not([type='checkbox']):not([type='radio']),
 .ob-app textarea,
 .ob-app select {
   width: 100%;

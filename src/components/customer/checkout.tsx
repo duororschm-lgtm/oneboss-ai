@@ -16,7 +16,8 @@ export function Checkout() {
     [busy, setBusy] = useState(false),
     [agree, setAgree] = useState(false);
   const [addons, setAddons] = useState<Row[]>([]),
-    [quantities, setQuantities] = useState<Record<string, number>>({});
+    // 用字符串保存数量：数字类型无法表达"用户清空了输入框"，会导致 0 删不掉。
+    [quantities, setQuantities] = useState<Record<string, string>>({});
   const code = params.get('plan') || 'basic';
   useEffect(() => {
     void fetch('/api/core/plans')
@@ -38,8 +39,8 @@ export function Checkout() {
         orgId: org.id,
         planCode: code,
         addons: Object.entries(quantities)
-          .filter(([, qty]) => qty > 0)
-          .map(([code, qty]) => ({ code, qty })),
+          .map(([code, qty]) => ({ code, qty: Number(qty) || 0 }))
+          .filter((item) => item.qty > 0),
       });
       const order = await customerApi<Row>('commerce/orders', {
         orgId: org.id,
@@ -64,7 +65,10 @@ export function Checkout() {
           <p className="ob-price">
             {money(
               plan.price_minor +
-                addons.reduce((sum, a) => sum + (quantities[a.code] || 0) * a.price_minor, 0),
+                addons.reduce(
+                  (sum, a) => sum + (Number(quantities[a.code]) || 0) * a.price_minor,
+                  0,
+                ),
             )}
           </p>
           <div className="ob-metrics">
@@ -82,13 +86,63 @@ export function Checkout() {
             </span>
           </div>
           <p>包含交互宣传网站、二维码、小红书配套文案与 ZIP 交付包。</p>
-          <fieldset className="ob-card" style={{ marginTop: 20 }}>
-            <legend>支付方式</legend>
-            <label className="ob-check">
-              <input type="radio" name="paymentMethod" value="manual_verified" checked readOnly />
-              微信收款码 · 人工核验 {methods.manualVerified ? '' : '（配置中）'}
-            </label>
-            <p className="ob-muted">付款后提交付款说明，管理员核对真实到账后开放制作。</p>
+          <fieldset
+            style={{
+              marginTop: 20,
+              border: '1px solid var(--ob-line)',
+              borderRadius: 4,
+              padding: '18px 22px 16px',
+              display: 'block',
+              minWidth: 0,
+            }}
+          >
+            <legend
+              style={{
+                padding: '0 8px',
+                fontSize: 12,
+                letterSpacing: '0.14em',
+                textTransform: 'uppercase',
+                color: 'var(--ob-muted)',
+              }}
+            >
+              支付方式
+            </legend>
+            <div style={{ display: 'grid', gap: 10 }}>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  fontSize: 13,
+                  color: 'var(--ob-muted)',
+                }}
+              >
+                <input type="radio" name="paymentMethod" disabled />
+                <span style={{ flex: 1 }}>微信支付</span>
+                <span className="ob-tag">未开通</span>
+              </label>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  fontSize: 13,
+                  color: 'var(--ob-muted)',
+                }}
+              >
+                <input type="radio" name="paymentMethod" disabled />
+                <span style={{ flex: 1 }}>支付宝支付</span>
+                <span className="ob-tag">未开通</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
+                <input type="radio" name="paymentMethod" checked readOnly />
+                <span style={{ flex: 1 }}>微信收款码 · 人工核验</span>
+                <span className="ob-tag">{methods.manualVerified ? '当前可用' : '配置中'}</span>
+              </label>
+            </div>
+            <p className="ob-muted" style={{ marginTop: 12, marginBottom: 0 }}>
+              在线商户支付未接入。付款后提交付款说明，管理员核对真实到账后才开放制作。
+            </p>
           </fieldset>
           {addons.length > 0 && (
             <div className="ob-form">
@@ -98,17 +152,19 @@ export function Checkout() {
                   {a.name} · 每份 {money(a.price_minor)}
                   <input
                     aria-label={`${a.name} 数量`}
-                    type="number"
-                    min={0}
-                    max={10}
-                    step={1}
-                    value={quantities[a.code] || 0}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={2}
+                    value={quantities[a.code] ?? '0'}
                     onChange={(e) => {
-                      setQuantities({
-                        ...quantities,
-                        [a.code]: Math.max(0, Math.min(10, Math.trunc(Number(e.target.value)))),
-                      });
+                      const digits = e.target.value.replace(/[^\d]/g, '').slice(0, 2);
+                      setQuantities({ ...quantities, [a.code]: digits });
                       setAgree(false);
+                    }}
+                    onBlur={() => {
+                      const clamped = Math.max(0, Math.min(10, Number(quantities[a.code] || 0)));
+                      setQuantities({ ...quantities, [a.code]: String(clamped) });
                     }}
                   />
                 </label>
