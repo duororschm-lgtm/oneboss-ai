@@ -87,3 +87,9 @@ PNG 单元测试实际创建1080×1350测试图并嵌入 QR，使用独立解码
 更新上述历史状态：用户已创建 Render `oneboss-ai`，部署33b0b7b。首次运行出现SELF_SIGNED_CERT_IN_CHAIN，补充Supabase Root 2021 CA到DATABASE_CA_CERT后重新部署。用户提供的 `/api/core/plans` 成功响应确认应用已通过原生连接读出托管套餐与增项，`/api/health` 的配置标记不再作为唯一证据。
 
 新增 `scripts/acceptance-a.ts`，真实Supabase临时用户密码登录 + 本地Next生产HTTP + 独立worker + 真实MiMo + 一次性PostgreSQL业务库验收通过，无Auth/模型mock。修复角色历史输出字段对严格Schema的干扰后，任务e2829a9b-0d3d-4f16-b6fe-0466f75bdfed首轮成功，usage.total_tokens=2061，结果持久化；临时Auth用户2个全部删除。没有对生产业务库付款、写订单或改管理员权限。具体检查和仍需Render/B联调的边界见 A_ACCEPTANCE.md。
+
+### Render 真实 Auth 与权限核验（2026-11-07）
+
+新环境已恢复，Render域名策略生效。Codex直接验证health、套餐查询、匿名/无效令牌拒绝、伪造webhook拒绝。使用新建临时Auth用户真实密码登录，Render接受真实Bearer并完成授权数据库查询（不存在run返回404）；同一用户在Supabase Data API读取订单/项目/权益均为空，直接修改支付状态返回42501。`acceptance:hosted`通过，临时用户1个已删除，无业务记录创建。
+
+service-role的Data API业务表读写也受42501限制，因此没有为线上测试扩大授权，也没有创建无法清理的演示订单。托管订单写入/worker仍未验收；详见A_ACCEPTANCE.md。仅新增可复用验收脚本和记录，不自动合并PR。

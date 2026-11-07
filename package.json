@@ -18,7 +18,8 @@
     "smoke:public": "tsx --env-file-if-exists=.env.local scripts/smoke-public.ts",
     "db:bootstrap:generate": "tsx scripts/generate-supabase-bootstrap.ts",
     "start:service": "node --env-file-if-exists=.env.local scripts/start-service.mjs",
-    "acceptance:a": "tsx --env-file-if-exists=.env.local scripts/acceptance-a.ts"
+    "acceptance:a": "tsx --env-file-if-exists=.env.local scripts/acceptance-a.ts",
+    "acceptance:hosted": "tsx --env-file-if-exists=.env.local scripts/acceptance-hosted.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.0.0",
