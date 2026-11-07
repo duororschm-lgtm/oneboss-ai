@@ -65,8 +65,9 @@ npm run smoke:public -- <published-slug>
 ## 已有成果与交接入口
 
 - [在线网站](https://oneboss-ai.onrender.com/)、[套餐](https://oneboss-ai.onrender.com/pricing)、[互动演示](https://oneboss-ai.onrender.com/examples)、[客户登录](https://oneboss-ai.onrender.com/login)、[审核后台](https://oneboss-ai.onrender.com/dashboard/admin)。
+- [当前任务分工](docs/当前任务分工.md)：A组、B组与服务提供方的待办、依赖和验收标准。
 - [未完成事项](未完成事项.md)：目标已暂停，保留剩余工作、证据缺口与恢复顺序。
 - [真实渲染样例与交付ZIP](docs/showcase/README.md)：系统演示成果，历史测试网址已清理。
 - [完成矩阵](docs/PROJECT_COMPLETION.md)、[验收记录](docs/A_ACCEPTANCE.md)、[创意模块交接](docs/creative-handoff.md)。
 
-当前上线的运行代码为29a9227。本次整理只补充交接材料、演示文件和手机视口验收脚本，不重启已暂停的完整项目目标。
+当前上线的运行代码为f4ddbbd，账号密码直接注册已经验收。最新剩余任务见当前任务分工与未完成清单；完整项目目标仍按暂停状态处理。
