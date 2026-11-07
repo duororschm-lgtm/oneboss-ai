@@ -26,7 +26,7 @@ DESIGN DNA fields:
 - rationale: why this design serves this product
 - palette: semantic hex tokens — keys MUST include background,surface,text,muted,accent,accentText,border. Optionally add secondaryAccent (hex).
 - gradientStops: optional array of 2–4 hex colors for controlled gradients (e.g. hero background). Keep low-frequency; not every section.
-- typography: font tokens — keys MUST include display,body,mono (font stack strings); optionally scale (0.8–1.4)
+- typography: font tokens — keys MUST include display,body,mono (font stack strings); optionally scale (0.8–1.4). Every typography value including scale is a STRING (e.g. "1.1"), never a number.
 - spacingScale: array of 1–4 numbers (px rhythm)
 - radiusScale: array of 1–2 numbers (px)
 - layoutMode: free-form short slug describing overall layout character
@@ -112,7 +112,8 @@ Constraints:
 - version must be 1 for all new directions.
 - Only reference fact keys that exist in the supplied verified facts. Do not invent product claims.
 - Do not invent database UUIDs anywhere.
-- All numbers must be bare JSON numbers — version and factVersion as integers, columns/gutter/spacingScale/radiusScale as numbers. Never strings, never "px" values.
+- All numbers must be bare JSON numbers — version and factVersion as integers, columns/gutter/spacingScale/radiusScale as numbers. Never strings, never "px" values. Exception: typography values (including scale) are always strings.
+- approvedByClient (boolean, always false) and factVersion (integer, equal to the current facts version) are REQUIRED on every direction — never omit them.
 - Emit every field exactly once. Add no fields beyond the schema — no missingInputs, assumptionsToConfirm, recommendedStyleId or similar; caveats go into rationale or section note.
 - Each direction is one coherent art direction, not a random mix.`;
 
@@ -182,7 +183,27 @@ export async function runOne() {
           previousDesignFeedback: feedback ?? null,
           task: feedback ? `${DESIGN_TASK}\n\nPREVIOUS ATTEMPT FEEDBACK (must fix):\n${feedback}` : DESIGN_TASK,
         });
-      let result = await attempt();
+      // The model drifts on the big strict schema; one feedback retry with the exact
+      // field-level issues recovers far more often than a blind re-run.
+      const attemptWithSchemaRetry = async (): ReturnType<typeof attempt> => {
+        try {
+          return await attempt();
+        } catch (error) {
+          if (
+            error instanceof AppError &&
+            error.code === 'MIMO_SCHEMA_INVALID' &&
+            error.schemaIssues?.length
+          ) {
+            return attempt(
+              `Your previous JSON violated the output contract. Fix EXACTLY these issues and change nothing else: ${error.schemaIssues
+                .map((i) => `${i.path || '(root)'}: ${i.code}`)
+                .join('; ')}. Every required field (approvedByClient, factVersion, …) must be present. typography values including scale are strings; other numbers are bare JSON numbers.`,
+            );
+          }
+          throw error;
+        }
+      };
+      let result = await attemptWithSchemaRetry();
       usage = { attempt1: result.usage };
       // New directions must carry a Site Blueprint; legacy stored outputs may lack it.
       assert(
