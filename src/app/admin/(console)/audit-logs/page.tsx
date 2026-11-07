@@ -55,9 +55,9 @@ export default function AuditLogsPage() {
         }
       />
 
-      <Banner tone="warning">
-        审计表 <code>admin_audit_logs</code> 尚未建立，读取接口缺失（缺口 <strong>A-11</strong>）。
-        在补齐之前，管理员的收款核验与退款操作<strong>没有可查询的审计留痕</strong>，这是一个真实风险。
+      <Banner tone="info">
+        审计从本次上线开始记录：管理员确认收款、确认或驳回退款都会写入
+        <code> admin_audit_logs</code>。上线之前的操作没有留痕。
       </Banner>
 
       <Card padding={false}>

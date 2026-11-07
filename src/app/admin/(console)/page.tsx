@@ -128,7 +128,7 @@ export default function AdminDashboardPage() {
               进入审批中心
             </Link>
             <p style={{ margin: 0, fontSize: 12, color: 'var(--ad-faint)' }}>
-              其余审批类型（制作放行、作品审核、发布审核）集中在审批中心，接口未提供前显示缺口说明。
+              其余审批类型（制作放行、作品审核、任务失败）也集中在审批中心，来自真实业务表。
             </p>
           </div>
         </Card>

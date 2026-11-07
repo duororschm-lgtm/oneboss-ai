@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { database, transaction, type Tx, type Actor } from './db';
 import { assert, AppError } from './errors';
+import { recordAudit } from './audit';
 import { Brief, ChangeRequest, Fact, Id, Money } from '../../contracts';
 export const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 export async function member(tx: Tx, actor: Actor, orgId: string, admin = false) {
@@ -252,6 +253,14 @@ export async function confirmPayment(
   await tx`update service_orders set pay_state='PAID' where id=${o.id}`;
   const plan = o.plan_snapshot;
   await tx`insert into project_entitlements(order_id,org_id,remaining_revisions,max_products,max_posters,is_demo,expires_at) values(${o.id},${o.org_id},${plan.revision_rounds},${plan.product_limit},${plan.poster_count},${o.is_demo},now()+${plan.hosting_days}*interval '1 day') on conflict(order_id) do nothing`;
+  if (channel === 'manual_verified')
+    await recordAudit(tx, actor, {
+      action: 'confirm-manual',
+      target: o.order_no,
+      result: 'success',
+      reason: input.evidenceRef,
+      details: { amountMinor: o.amount_minor, attemptId: a.id },
+    });
   return { orderId: o.id, payState: 'PAID', isDemo: o.is_demo };
 }
 export async function createProject(tx: Tx, actor: Actor, orderId: string) {
@@ -296,6 +305,13 @@ export async function finalizeRefund(
   const state = total === o.amount_minor ? 'REFUNDED' : total > 0 ? 'PARTIALLY_REFUNDED' : 'PAID';
   await tx`update service_orders set pay_state=${state} where id=${o.id}`;
   await tx`update project_entitlements set revoked=${total > 0} where order_id=${o.id}`;
+  await recordAudit(tx, actor, {
+    action: confirmed ? 'finalize-refund-confirm' : 'finalize-refund-reject',
+    target: o.order_no,
+    result: 'success',
+    reason: reference,
+    details: { refundId: r.id, amountMinor: r.amount_minor },
+  });
   return { payState: state, refundStatus: confirmed ? 'CONFIRMED' : 'REJECTED' };
 }
 export const Intake = z

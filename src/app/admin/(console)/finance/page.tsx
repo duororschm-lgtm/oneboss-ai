@@ -129,16 +129,15 @@ export default function FinancePage() {
         ) : null}
       </Card>
 
-      <Card title="成本与结余" subtitle="需要真实成本数据" padding={false}>
-        <UnsupportedState
-          spec={ENDPOINTS.revenue}
-          extra={
-            <p style={{ fontSize: 12.5, margin: 0 }}>
-              MiMo 调用成本、存储/托管/支付手续费需要后端按项目归集；估算经营结余必须标注为估算。
-              在拿到真实成本前，本页不展示任何结余数字。
-            </p>
-          }
-        />
+      <Card title="成本与结余" subtitle="尚未接入成本数据" padding={false}>
+        <div className="ad-state">
+          <strong>成本口径尚未建立</strong>
+          <p style={{ margin: '0 0 6px' }}>
+            MiMo 调用成本、存储/托管/支付手续费需要按项目归集后才能计算；
+            估算经营结余必须标注为估算，不得当作法定会计利润。
+          </p>
+          <p style={{ margin: 0 }}>在拿到真实成本前，本页不展示任何结余数字。</p>
+        </div>
       </Card>
     </>
   );

@@ -1,10 +1,15 @@
 'use client';
-import { useMemo, useState } from 'react';
-import { ENDPOINTS } from '../../../../lib/admin/api';
-import type { AdminOrder } from '../../../../lib/admin/types';
-import { dateOnly, dateTime, money, payState } from '../../../../lib/admin/format';
-import { useAdmin } from '../../../../components/admin/shell';
-import { Banner, EmptyState, SkeletonRows, UnsupportedState } from '../../../../components/admin/states';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  ENDPOINTS,
+  fetchOrderDetail,
+  fetchOrders,
+  type AdminResult,
+  type OrderDetail,
+  type OrderRow,
+} from '../../../../lib/admin/api';
+import { dateOnly, dateTime, money, payState, projectStatus } from '../../../../lib/admin/format';
+import { Banner, EmptyState, ErrorState, SkeletonRows, UnsupportedState } from '../../../../components/admin/states';
 import {
   Card,
   DataTable,
@@ -16,37 +21,60 @@ import {
   type Column,
 } from '../../../../components/admin/ui';
 
-const PAGE_SIZE = 15;
+const PAGE_SIZE = 20;
+
+interface Paged {
+  items: OrderRow[];
+  page: number;
+  pageSize: number;
+  total: number;
+  hasNextPage: boolean;
+}
 
 export default function OrdersPage() {
-  const { workspace, reload } = useAdmin();
   const [keyword, setKeyword] = useState('');
+  const [appliedKeyword, setAppliedKeyword] = useState('');
   const [payFilter, setPayFilter] = useState('ALL');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [page, setPage] = useState(1);
-  const [selected, setSelected] = useState<AdminOrder | null>(null);
+  const [result, setResult] = useState<AdminResult<Paged> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<OrderRow | null>(null);
+  const [detail, setDetail] = useState<AdminResult<OrderDetail> | null>(null);
 
-  const rows = workspace?.ok ? workspace.data.orders : [];
+  const load = useCallback(async () => {
+    setLoading(true);
+    setResult(
+      await fetchOrders({
+        page,
+        pageSize: PAGE_SIZE,
+        keyword: appliedKeyword || undefined,
+        payState: payFilter === 'ALL' ? undefined : payFilter,
+        from: from || undefined,
+        to: to || undefined,
+      }),
+    );
+    setLoading(false);
+  }, [page, appliedKeyword, payFilter, from, to]);
 
-  const filtered = useMemo(() => {
-    const text = keyword.trim().toLowerCase();
-    return rows.filter((order) => {
-      if (payFilter !== 'ALL' && order.pay_state !== payFilter) return false;
-      if (text) {
-        const haystack = `${order.order_no} ${order.organization ?? ''} ${order.plan_name ?? ''}`.toLowerCase();
-        if (!haystack.includes(text)) return false;
-      }
-      const created = order.created_at.slice(0, 10);
-      if (from && created < from) return false;
-      if (to && created > to) return false;
-      return true;
-    });
-  }, [rows, keyword, payFilter, from, to]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  useEffect(() => {
+    if (!selected) {
+      setDetail(null);
+      return;
+    }
+    setDetail(null);
+    void fetchOrderDetail(selected.id).then(setDetail);
+  }, [selected]);
 
-  const columns: Column<AdminOrder>[] = [
+  const rows = result?.ok ? result.data.items : [];
+  const total = result?.ok ? result.data.total : 0;
+
+  const columns: Column<OrderRow>[] = [
     { key: 'no', header: '订单编号', render: (row) => <span className="ad-code">{row.order_no}</span> },
     {
       key: 'org',
@@ -75,11 +103,11 @@ export default function OrdersPage() {
     {
       key: 'work',
       header: '制作状态',
-      render: () => (
-        <span className="ad-badge" data-tone="neutral" title="需要 A-03 返回 work_state">
-          接口未提供
-        </span>
-      ),
+      render: (row) => {
+        if (!row.work_state) return <span className="ad-badge" data-tone="neutral">未开始</span>;
+        const state = projectStatus(row.work_state);
+        return <StatusBadge label={state.label} tone={state.tone} />;
+      },
     },
     { key: 'created', header: '创建时间', render: (row) => dateOnly(row.created_at) },
     {
@@ -104,31 +132,29 @@ export default function OrdersPage() {
     <>
       <PageHead
         title="订单管理"
-        description="数据来自现有 /api/core/admin，最多返回最近 100 条原始记录。服务端分页、关键词与制作状态筛选需 A-03。"
+        description="服务端分页与筛选。金额与状态全部来自数据库，前端不做汇总。"
         actions={
-          <button className="ad-btn" onClick={() => void reload()}>
+          <button className="ad-btn" onClick={() => void load()} disabled={loading}>
             刷新
           </button>
         }
       />
 
-      <Banner tone="info">
-        当前列表由前端在最近 100 条记录内做筛选与分页，<strong>不是服务端分页</strong>，
-        统计与导出请以 A-03 接口为准。
-      </Banner>
-
       <Card padding={false}>
         <div className="ad-toolbar">
           <label className="ad-field" style={{ minWidth: 220 }}>
-            订单号 / 客户
+            订单号 / 客户 / 套餐
             <input
               className="ad-input"
               value={keyword}
-              onChange={(event) => {
-                setKeyword(event.target.value);
-                setPage(1);
+              onChange={(event) => setKeyword(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  setPage(1);
+                  setAppliedKeyword(keyword.trim());
+                }
               }}
-              placeholder="输入订单号、组织或套餐"
+              placeholder="输入后回车搜索"
             />
           </label>
           <label className="ad-field">
@@ -175,43 +201,42 @@ export default function OrdersPage() {
               }}
             />
           </label>
+          <button
+            className="ad-btn"
+            onClick={() => {
+              setPage(1);
+              setAppliedKeyword(keyword.trim());
+            }}
+          >
+            搜索
+          </button>
           <span style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--ad-muted)' }}>
-            命中 {filtered.length} 条
+            共 {total} 条
           </span>
         </div>
 
-        {!workspace ? (
+        {loading && !result ? (
           <SkeletonRows rows={8} />
-        ) : workspace.ok ? (
-          paged.length ? (
+        ) : result?.ok ? (
+          rows.length ? (
             <>
-              <DataTable
-                columns={columns}
-                rows={paged}
-                rowKey={(row) => row.id}
-                onRowClick={setSelected}
-                caption="订单列表"
-              />
-              <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onChange={setPage} />
+              <DataTable columns={columns} rows={rows} rowKey={(row) => row.id} onRowClick={setSelected} caption="订单列表" />
+              <Pagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
             </>
           ) : (
             <EmptyState title="没有匹配的订单" detail="试试调整关键词或日期范围。" />
           )
-        ) : workspace.kind === 'unsupported' ? (
+        ) : result && result.kind === 'unsupported' ? (
           <UnsupportedState spec={ENDPOINTS.orders} />
-        ) : (
-          <EmptyState
-            title="无法读取订单"
-            detail={workspace.kind === 'forbidden' ? '无权限' : '请刷新重试'}
-          />
-        )}
+        ) : result && result.kind === 'error' ? (
+          <ErrorState message={result.message} requestId={result.requestId} onRetry={() => void load()} />
+        ) : null}
       </Card>
 
       {selected && (
         <Drawer title={selected.order_no} onClose={() => setSelected(null)}>
           <KeyValue
             items={[
-              { label: '订单 ID', value: <span className="ad-code">{selected.id}</span> },
               { label: '客户组织', value: selected.organization ?? '—' },
               { label: '套餐', value: selected.plan_name ?? '—' },
               { label: '订单金额', value: money(selected.amount_minor) },
@@ -224,15 +249,89 @@ export default function OrdersPage() {
                   />
                 ),
               },
-              { label: '是否演示', value: selected.is_demo ? '是（不计入真实收入）' : '否' },
+              { label: '是否演示', value: selected.is_demo ? '是（不计入收入）' : '否' },
               { label: '创建时间', value: dateTime(selected.created_at) },
-              { label: '组织 ID', value: <span className="ad-code">{selected.org_id}</span> },
             ]}
           />
-          <Banner tone="warning">
-            套餐权益快照、付款记录、制作任务、网站/海报版本、修改请求与审批历史需要订单详情接口
-            <code> GET /api/admin/orders/:id</code>（缺口 <strong>A-04</strong>）。此处不展示推测内容。
-          </Banner>
+
+          {!detail ? (
+            <SkeletonRows rows={4} />
+          ) : !detail.ok ? (
+            <ErrorState message={detail.kind === 'error' ? detail.message : '无法读取订单详情'} />
+          ) : (
+            <>
+              {detail.data.entitlement && (
+                <section>
+                  <h4 style={{ margin: '0 0 6px', fontSize: 13 }}>套餐权益快照</h4>
+                  <KeyValue
+                    items={[
+                      { label: '剩余修改', value: `${detail.data.entitlement.remaining_revisions} 次` },
+                      { label: '产品上限', value: detail.data.entitlement.max_products },
+                      { label: '海报上限', value: detail.data.entitlement.max_posters },
+                      { label: '托管到期', value: dateOnly(detail.data.entitlement.expires_at) },
+                      { label: '权益状态', value: detail.data.entitlement.revoked ? '已撤销' : '有效' },
+                    ]}
+                  />
+                </section>
+              )}
+
+              <section>
+                <h4 style={{ margin: '0 0 6px', fontSize: 13 }}>付款记录（{detail.data.payments.length}）</h4>
+                {detail.data.payments.length ? (
+                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5 }}>
+                    {detail.data.payments.map((payment, index) => (
+                      <li key={`${payment.kind}-${index}`}>
+                        {payment.kind === 'event' ? '核验事件' : '支付尝试'} · {payment.provider} ·{' '}
+                        {payment.status}
+                        {payment.amount_minor ? ` · ${money(payment.amount_minor)}` : ''} ·{' '}
+                        {dateTime(payment.created_at)}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p style={{ margin: 0, fontSize: 12.5, color: 'var(--ad-muted)' }}>暂无付款记录</p>
+                )}
+              </section>
+
+              <section>
+                <h4 style={{ margin: '0 0 6px', fontSize: 13 }}>制作任务（{detail.data.runs.length}）</h4>
+                {detail.data.runs.length ? (
+                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5 }}>
+                    {detail.data.runs.slice(0, 8).map((run) => (
+                      <li key={run.id}>
+                        {run.role} · {run.status}
+                        {run.error_class ? ` · ${run.error_class}` : ''} · {dateTime(run.created_at)}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p style={{ margin: 0, fontSize: 12.5, color: 'var(--ad-muted)' }}>还没有制作任务</p>
+                )}
+              </section>
+
+              <section>
+                <h4 style={{ margin: '0 0 6px', fontSize: 13 }}>版本与退款</h4>
+                <p style={{ margin: 0, fontSize: 12.5, color: 'var(--ad-muted)' }}>
+                  版本 {detail.data.versions.length} 个 · 退款 {detail.data.refunds.length} 笔 · 修改请求{' '}
+                  {detail.data.changes.length} 条
+                </p>
+                {detail.data.project?.publish_slug && (
+                  <p style={{ margin: '6px 0 0', fontSize: 12.5 }}>
+                    公开地址：
+                    <a
+                      className="ad-code"
+                      href={`/p/${detail.data.project.publish_slug}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      /p/{detail.data.project.publish_slug}
+                    </a>
+                  </p>
+                )}
+              </section>
+            </>
+          )}
+
           <div style={{ display: 'flex', gap: 8 }}>
             <a className="ad-btn" href="/admin/approvals">
               去审批中心
@@ -247,6 +346,10 @@ export default function OrdersPage() {
             </button>
           </div>
         </Drawer>
+      )}
+
+      {result && !result.ok && result.kind === 'forbidden' && (
+        <Banner tone="danger">没有访问订单的权限。</Banner>
       )}
     </>
   );
