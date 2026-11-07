@@ -11,6 +11,10 @@ export async function authenticate(request: Request) {
     global: { fetch: outboundFetch },
     auth: { persistSession: false, autoRefreshToken: false },
   }).auth.getUser(header.slice(7));
+  // A transport outage is not an invalid credential. Keep retryable service
+  // failures distinct so clients do not discard a valid session or misdiagnose RBAC.
+  if (error && (error.name === 'AuthRetryableFetchError' || error.status === 0 || (error.status ?? 0) >= 500))
+    throw new AppError('AUTH_SERVICE_UNAVAILABLE', 503);
   if (error || !data.user) throw new AppError('UNAUTHENTICATED', 401);
   return { userId: data.user.id };
 }

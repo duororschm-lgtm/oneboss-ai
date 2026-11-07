@@ -80,6 +80,7 @@ export const useCustomer = () => useContext(SessionContext);
 
 const messages: Record<string, string> = {
   UNAUTHENTICATED: '登录已过期，请重新登录。',
+  AUTH_SERVICE_UNAVAILABLE: '认证服务暂时无法连接，请稍后重试。',
   FORBIDDEN: '你没有权限访问这项内容。',
   PLATFORM_ADMIN_REQUIRED: '此页面仅供已授权的服务管理员使用。',
   PAYMENT_REQUIRED: '订单尚未确认付款，请先完成支付。',

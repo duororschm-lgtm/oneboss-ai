@@ -118,6 +118,7 @@ export type AdminResult<T> = { ok: true; data: T; mock: boolean } | AdminFailure
 
 const MESSAGES: Record<string, string> = {
   UNAUTHENTICATED: '登录已过期，请重新登录。',
+  AUTH_SERVICE_UNAVAILABLE: '认证服务暂时无法连接，请稍后重试。',
   FORBIDDEN: '你的账号没有访问管理员平台的权限。',
   PLATFORM_ADMIN_REQUIRED: '此页面仅供已授权的平台管理员使用。',
   NOT_FOUND: '该记录不存在或已被处理。',

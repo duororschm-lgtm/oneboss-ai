@@ -90,6 +90,17 @@ export function AdminShell({ children }: { children: ReactNode }) {
           setPhase('forbidden');
           return;
         }
+        if (result.kind === 'unauthorized') {
+          const refreshed = await browserAuth().auth.refreshSession();
+          if (!refreshed.data.session || attempt === 2) {
+            // A failed network refresh can be retried without discarding a session.
+            if (refreshed.error?.name === 'AuthRetryableFetchError') continue;
+            setPhase('anonymous');
+            router.replace('/admin/login');
+            return;
+          }
+          continue;
+        }
         // unauthorized / unsupported / error 都允许重试一轮再下结论。
       } catch {
         /* 超时或网络异常：继续重试 */
