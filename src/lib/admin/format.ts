@@ -97,16 +97,21 @@ export const maskName = (value: string | null | undefined) => {
 };
 
 export const AGENT_ROLES = [
-  { key: 'project_manager', name: '项目经理' },
-  { key: 'product_analyst', name: '产品分析师' },
-  { key: 'creative_director', name: 'AI 创意总监' },
-  { key: 'production_team', name: '复合制作任务（文案、网站、海报）' },
-  { key: 'copywriter', name: '宣传文案师' },
-  { key: 'site_designer', name: '网站设计师' },
-  { key: 'poster_designer', name: '海报设计师' },
-  { key: 'qa_reviewer', name: '质量审核员' },
-  { key: 'delivery_specialist', name: '发布交付专员' },
+  { key: 'intake', name: '产品分析师' },
+  { key: 'design', name: 'AI 创意总监' },
+  { key: 'generate', name: '网站设计师' },
+  { key: 'change', name: '项目经理' },
+  { key: 'publish', name: '发布交付专员' },
+  { key: 'delivery', name: '交付专员' },
 ] as const;
+
+/** Map backend agent_run.role to display role for card matching. */
+export function matchesAgentRole(runRole: string, roleKey: string): boolean {
+  if (runRole === roleKey) return true;
+  // Generate covers site + poster + copy (composite task)
+  if (roleKey === 'generate' && runRole === 'generate') return true;
+  return false;
+}
 
 export const agentRoleName = (role: string) =>
   AGENT_ROLES.find((item) => item.key === role || item.name === role)?.name ?? role;

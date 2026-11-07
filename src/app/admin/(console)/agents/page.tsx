@@ -1,9 +1,8 @@
 'use client';
-import { useTaskPolling } from '../../../../components/customer/use-task-polling';
 import { useCallback, useEffect, useState } from 'react';
-import { fetchAgentRuns, fetchWorkerHealth, type WorkerHealth, ENDPOINTS, type AdminResult } from '../../../../lib/admin/api';
+import { fetchAgentRuns, ENDPOINTS, type AdminResult } from '../../../../lib/admin/api';
 import type { AgentRun } from '../../../../lib/admin/types';
-import { AGENT_ROLES, agentRoleName, agentStatus, dateTime } from '../../../../lib/admin/format';
+import { AGENT_ROLES, agentRoleName, agentStatus, dateTime, matchesAgentRole } from '../../../../lib/admin/format';
 import {
   Banner,
   EmptyState,
@@ -15,13 +14,12 @@ import { Card, DataTable, PageHead, StatusBadge, type Column } from '../../../..
 
 export default function AgentsPage() {
   const [result, setResult] = useState<AdminResult<AgentRun[]> | null>(null);
-  const [workers,setWorkers]=useState<AdminResult<WorkerHealth[]> | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [next,health]=await Promise.all([fetchAgentRuns(),fetchWorkerHealth()]);setResult(next);setWorkers(health);
-    setLoading(false);return next.ok;
+    setResult(await fetchAgentRuns());
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -29,11 +27,10 @@ export default function AgentsPage() {
   }, [load]);
 
   const runs = result?.ok ? result.data : [];
-  useTaskPolling(runs.some(run=>['QUEUED','RUNNING'].includes(run.status)),load);
   const unsupported = result && !result.ok && result.kind === 'unsupported';
 
   const columns: Column<AgentRun>[] = [
-    { key: 'role', header: 'AI 员工', render: (row) => agentRoleName(row.employeeKey || row.role) },
+    { key: 'role', header: 'AI 员工', render: (row) => agentRoleName(row.role) },
     {
       key: 'status',
       header: '状态',
@@ -79,12 +76,9 @@ export default function AgentsPage() {
         </Banner>
       )}
 
-      <Card title="Worker 健康">
-        {workers?.ok ? workers.data.length ? workers.data.map(worker=><p key={worker.id}><span className="ad-code">{worker.id.slice(0,8)}</span> · {worker.status==='online'?'在线':worker.status==='offline'?'心跳超时':'已停止'} · 最近心跳 {dateTime(worker.last_seen_at)}{worker.current_run_id ? ` · 任务 ${worker.current_run_id.slice(0,8)}`:''}</p>) : <p>尚无 Worker 注册记录。不能据此认为制作服务在线。</p> : <p>Worker 健康状态尚未读取。</p>}
-      </Card>
       <div className="ad-grid ad-grid-4">
         {AGENT_ROLES.map((role) => {
-          const latest = runs.find((run) => run.employeeKey === role.key || run.role === role.key || run.role === role.name);
+          const latest = runs.find((run) => matchesAgentRole(run.role, role.key));
           const state = latest ? agentStatus(latest.status) : null;
           return (
             <div className="ad-metric" key={role.key} data-state={!latest ? 'unsupported' : 'ready'}>
@@ -101,7 +95,7 @@ export default function AgentsPage() {
                   {unsupported ? '接口未提供' : '暂无任务'}
                 </span>
               )}
-              <span className="ad-metric-note">{role.key === 'copywriter' || role.key === 'site_designer' || role.key === 'poster_designer' ? '属于复合制作任务，未单独调度' : role.key}</span>
+              <span className="ad-metric-note">{role.key}</span>
             </div>
           );
         })}

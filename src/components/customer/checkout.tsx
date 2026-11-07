@@ -6,7 +6,6 @@ import { useCustomer, customerApi } from './session';
 import { money, Notice, Loading } from './shell';
 import type { Plan, Row } from '../../lib/customer/types';
 import { usePaymentMethods } from './payment-methods';
-import { addonQuantity } from '../../lib/customer/addon-input';
 export function Checkout() {
   const methods = usePaymentMethods();
   const { session, ready } = useCustomer(),
@@ -18,9 +17,13 @@ export function Checkout() {
     [agree, setAgree] = useState(false);
   const [addons, setAddons] = useState<Row[]>([]),
     [quantities, setQuantities] = useState<Record<string, string>>({});
-  const [paymentChannel, setPaymentChannel] = useState<'wechat' | 'alipay'>('wechat');
-  const invalidQuantity = Object.values(quantities).some((value) => addonQuantity(value) === undefined);
+  const [payChannel, setPayChannel] = useState<'wechat' | 'alipay'>('wechat');
   const code = params.get('plan') || 'basic';
+
+  function qty(code: string): number {
+    const v = quantities[code];
+    return v === '' || v === undefined ? 0 : Math.max(0, Math.min(10, Math.trunc(Number(v))));
+  }
   useEffect(() => {
     void fetch('/api/core/plans')
       .then((r) => r.json())
@@ -36,20 +39,18 @@ export function Checkout() {
     setBusy(true);
     setError('');
     try {
-      if (invalidQuantity) throw Error('加购数量须为0至10的整数，空白表示不加购。');
       const org = await customerApi<Row>('core/organizations', { name: '我的创意工作室' });
       const quote = await customerApi<Row>('commerce/quotes', {
         orgId: org.id,
         planCode: code,
         addons: Object.entries(quantities)
-          .map(([code, value]) => ({ code, qty: addonQuantity(value)! }))
-          .filter(({ qty }) => qty > 0),
+          .filter(([, v]) => v !== '' && Number(v) > 0)
+          .map(([code, v]) => ({ code, qty: Math.trunc(Number(v)) })),
       });
       const order = await customerApi<Row>('commerce/orders', {
         orgId: org.id,
         quoteId: quote.id,
         isDemo: false,
-        paymentChannel,
       });
       router.push(`/dashboard/orders/${order.id}`);
     } catch (e) {
@@ -67,9 +68,8 @@ export function Checkout() {
         <article className="ob-card">
           <h2>{plan.name}</h2>
           <p className="ob-price">
-            {invalidQuantity ? '—' : money(
-              plan.price_minor +
-                addons.reduce((sum, a) => sum + (addonQuantity(quantities[a.code] || '') || 0) * a.price_minor, 0),
+            {money(
+              plan.price_minor + addons.reduce((sum, a) => sum + qty(a.code) * a.price_minor, 0),
             )}
           </p>
           <div className="ob-metrics">
@@ -89,55 +89,95 @@ export function Checkout() {
           <p>包含交互宣传网站、二维码、小红书配套文案与 ZIP 交付包。</p>
           <fieldset className="ob-card" style={{ marginTop: 20 }}>
             <legend>支付方式</legend>
-            {(['wechat','alipay'] as const).map((channel) => {
-              const available = methods.manualChannels?.[channel] || (channel === 'wechat' && methods.manual);
-              return <label className="ob-check" key={channel}>
-                <input type="radio" name="paymentMethod" value={channel}
-                  checked={paymentChannel === channel} disabled={!available}
-                  onChange={() => { setPaymentChannel(channel); setAgree(false); }} />
-                <span>{channel === 'wechat' ? '微信支付' : '支付宝支付'}（人工核验）{available ? '' : ' · 待配置'}</span>
-              </label>;
-            })}
-            <p className="ob-muted">付款后提交付款说明，管理员核对真实到账后开放制作。</p>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+              <label
+                className="ob-check"
+                style={{
+                  padding: '14px 20px',
+                  border: `2px solid ${payChannel === 'wechat' ? '#22c55e' : '#ddd'}`,
+                  borderRadius: 12,
+                  cursor: 'pointer',
+                  flex: '1 1 180px',
+                  background: payChannel === 'wechat' ? '#f0fdf4' : '#fff',
+                }}
+              >
+                <input
+                  type="radio"
+                  name="payChannel"
+                  value="wechat"
+                  checked={payChannel === 'wechat'}
+                  onChange={() => setPayChannel('wechat')}
+                  style={{ display: 'none' }}
+                />
+                <strong>💚 微信支付</strong>
+                <br />
+                <small style={{ color: '#666' }}>人工核验到账</small>
+              </label>
+              <label
+                className="ob-check"
+                style={{
+                  padding: '14px 20px',
+                  border: `2px solid ${payChannel === 'alipay' ? '#1677ff' : '#ddd'}`,
+                  borderRadius: 12,
+                  cursor: 'pointer',
+                  flex: '1 1 180px',
+                  background: payChannel === 'alipay' ? '#eff6ff' : '#fff',
+                }}
+              >
+                <input
+                  type="radio"
+                  name="payChannel"
+                  value="alipay"
+                  checked={payChannel === 'alipay'}
+                  onChange={() => setPayChannel('alipay')}
+                  style={{ display: 'none' }}
+                />
+                <strong>💙 支付宝</strong>
+                <br />
+                <small style={{ color: '#666' }}>人工核验到账</small>
+              </label>
+            </div>
+            <p className="ob-muted">
+              {payChannel === 'wechat'
+                ? '选择微信收款码 · 付款后提交付款说明，管理员核对真实到账后开放制作。'
+                : '选择支付宝收款码 · 付款后提交付款说明，管理员核对真实到账后开放制作。'}
+            </p>
           </fieldset>
           {addons.length > 0 && (
             <div className="ob-form">
               <h3>按需加购</h3>
               {addons.map((a) => (
                 <label key={a.code}>
-                  {a.name} · 每{a.code === 'extra-product' ? '个' : a.code === 'extra-poster' ? '张' : '轮'} {money(a.price_minor)}
-                  <div style={{display:'flex',gap:8,alignItems:'center'}}>
-                  <button type="button" className="ob-button ob-ghost ob-small" aria-label={`减少${a.name}`}
-                    onClick={() => { setQuantities({...quantities,[a.code]:String(Math.max(0,(addonQuantity(quantities[a.code] || '') || 0)-1))}); setAgree(false); }}>−</button>
+                  {a.name} · 每份 {money(a.price_minor)}
                   <input
                     aria-label={`${a.name} 数量`}
                     type="text"
                     inputMode="numeric"
-                    aria-invalid={addonQuantity(quantities[a.code] || '') === undefined}
+                    pattern="[0-9]*"
                     value={quantities[a.code] ?? ''}
                     onChange={(e) => {
-                      setQuantities({
-                        ...quantities,
-                        [a.code]: e.target.value,
-                      });
+                      const raw = e.target.value;
+                      if (raw === '') {
+                        setQuantities({ ...quantities, [a.code]: '' });
+                      } else if (/^\d{1,2}$/.test(raw) && Number(raw) <= 10) {
+                        setQuantities({ ...quantities, [a.code]: raw });
+                      }
                       setAgree(false);
                     }}
+                    placeholder="0"
                   />
-                  <button type="button" className="ob-button ob-ghost ob-small" aria-label={`增加${a.name}`}
-                    onClick={() => { setQuantities({...quantities,[a.code]:String(Math.min(10,(addonQuantity(quantities[a.code] || '') || 0)+1))}); setAgree(false); }}>+</button>
-                  </div>
-                  {addonQuantity(quantities[a.code] || '') === undefined && <small role="alert">请输入0至10的整数。</small>}
                 </label>
               ))}
-              <small>空白表示不加购。加购后的权益与最终金额将在订单中保存。</small>
-              {invalidQuantity && <Notice error>请修正加购数量后再确认报价。</Notice>}
+              <small>默认不加购。加购后的权益与最终金额将在订单中保存。</small>
             </div>
           )}
           <Notice>
             这是制作服务订单。创建订单不会扣费。
             {methods.manualVerified
-              ? '下一步可查看所选渠道收款码，按订单金额付款，等待人工核验。'
-              : '收款方式正在配置。'}
+              ? '下一步可查看微信收款码，按订单金额付款。'
+              : methods.wechatNative
+                ? '下一步可用微信扫一扫支付。'
+                : '收款方式正在配置。'}
             最后金额以保存的订单为准。
           </Notice>
           <label className="ob-check">
@@ -152,7 +192,7 @@ export function Checkout() {
             {!ready ? (
               <Loading />
             ) : session ? (
-              <button disabled={busy || !agree || invalidQuantity || !(methods.manualChannels?.[paymentChannel] || (paymentChannel === 'wechat' && methods.manual))} onClick={() => void create()} className="ob-button">
+              <button disabled={busy || !agree} onClick={() => void create()} className="ob-button">
                 {busy ? '正在创建…' : '创建服务订单 →'}
               </button>
             ) : (
