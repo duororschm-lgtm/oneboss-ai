@@ -132,14 +132,15 @@ export async function callMimo<T>(
   }
   const result = schema.safeParse(parsed);
   if (!result.success) {
-    // Only schema issue codes are logged: never model values, customer text or credentials.
-    console.error(
-      JSON.stringify({
-        errorClass: 'MIMO_SCHEMA_INVALID',
-        issueCodes: result.error.issues.slice(0, 10).map((issue) => issue.code),
-      }),
-    );
-    throw new AppError('MIMO_SCHEMA_INVALID', 502);
+    // Only schema paths and issue codes are kept: never model values, customer text or credentials.
+    const issues = result.error.issues.slice(0, 10).map((issue) => ({
+      path: issue.path.join('.'),
+      code: (issue as { code: string }).code,
+    }));
+    console.error(JSON.stringify({ errorClass: 'MIMO_SCHEMA_INVALID', issueCodes: issues.map((i) => i.code) }));
+    const error = new AppError('MIMO_SCHEMA_INVALID', 502);
+    error.schemaIssues = issues;
+    throw error;
   }
   return {
     output: result.data,

@@ -1,4 +1,6 @@
 export class AppError extends Error {
+  // Schema metadata (field paths + issue codes) for model-feedback retries. Never model values.
+  schemaIssues?: { path: string; code: string }[];
   constructor(
     public code: string,
     public status = 400,

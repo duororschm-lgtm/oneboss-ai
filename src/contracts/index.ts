@@ -74,7 +74,8 @@ export const SectionLayout = z
     alignment: z.enum(['left', 'center', 'right']).optional(),
     width: z.enum(['narrow', 'standard', 'wide', 'full']).optional(),
     emphasis: z.enum(['image-led', 'text-led', 'balanced']).optional(),
-    background: z.enum(['plain', 'surface', 'inverted', 'accent']).optional(),
+    // 'gradient' renders via .bg-gradient (site-v4-motion.css) and is part of the design vocabulary.
+    background: z.enum(['plain', 'surface', 'inverted', 'accent', 'gradient']).optional(),
     imageRatio: z.enum(['square', 'portrait', 'landscape', 'wide']).optional(),
   })
   .strict();
@@ -287,6 +288,16 @@ export const IntakeResult = z
   })
   .strict();
 export const DesignChoices = z.object({ choices: z.array(DesignSystem).min(2).max(3) }).strict();
+// Model-facing design contract. approvedByClient and factVersion are bookkeeping the
+// runner stamps server-side after validation (same rule as directionId): they appear
+// here as optional unknowns so whatever the model emits for them is accepted and then
+// overwritten — a stale or forged claim can neither fail the task nor survive it.
+export const ModelDesignSystem = DesignSystem.extend({
+  approvedByClient: z.unknown().optional(),
+  factVersion: z.unknown().optional(),
+}).strict();
+export const ModelDesignChoices = z.object({ choices: z.array(ModelDesignSystem).min(2).max(3) }).strict();
+export type ModelDesignSystemType = z.infer<typeof ModelDesignSystem>;
 export const DeliveryManifest = z
   .object({
     schemaVersion: z.literal('1.0'),

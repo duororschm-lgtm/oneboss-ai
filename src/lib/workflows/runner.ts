@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { database, type Tx } from '../core/db';
 import { assert, AppError } from '../core/errors';
 import { entitlement, facts } from '../core/service';
-import { DesignChoices, Production, ParsedChange, IntakeResult } from '../../contracts';
+import { ModelDesignChoices, Production, ParsedChange, IntakeResult } from '../../contracts';
+import type { DesignSystemType, ModelDesignSystemType } from '../../contracts';
 import { callMimo } from '../mimo/gateway';
 import { validateProduction, validateBlueprintAdherence } from '../core/validation';
 import { checkDesignDistinctness } from '../creative/design-distinctness';
@@ -26,42 +27,59 @@ DESIGN DNA fields:
 - rationale: why this design serves this product
 - palette: semantic hex tokens — keys MUST include background,surface,text,muted,accent,accentText,border. Optionally add secondaryAccent (hex).
 - gradientStops: optional array of 2–4 hex colors for controlled gradients (e.g. hero background). Keep low-frequency; not every section.
-- typography: font tokens — keys MUST include display,body,mono (font stack strings); optionally scale (0.8–1.4)
+- typography: font tokens — keys MUST include display,body,mono (font stack strings); optionally scale (0.8–1.4). Every typography value including scale is a STRING (e.g. "1.1"), never a number.
 - spacingScale: array of 1–4 numbers (px rhythm)
 - radiusScale: array of 1–2 numbers (px)
 - layoutMode: free-form short slug describing overall layout character
 - motionPreset: one of none | subtle | energetic
 - motionLanguage: calm | expressive | energetic (drives animation intensity and rhythm)
 - density: airy | balanced | dense
-- gridStyle: editorial | asymmetric | modular | full-bleed
+- gridStyle: the page grid character — exactly one of editorial | asymmetric | modular | full-bleed (never a motif value)
 - imageTreatment: full-bleed | framed | collage | minimal
-- visualMotif: clean-lines | organic-shapes | geometric-grid | soft-glow | bold-blocks | fine-details
+- visualMotif: the decorative motif — exactly one of clean-lines | organic-shapes | geometric-grid | soft-glow | bold-blocks | fine-details (never a grid value)
 - heroComposition: split-editorial | full-bleed | centered-stage | type-led | asymmetric
 - pageGrid: { contentWidth: narrow|standard|wide|full, columns: 4–12, gutter: 0–64 }
 - siteBlueprint: see below
 
-SITE BLUEPRINT (each direction has its own page structure):
-- pages: 1–3 pages, each { slug: "" for root (empty string), title, sections: 1–12 }
-- sections: each { type, layout, factKeys?, assetRoles?, interactionIds?, motionId?, note? }
-  - type MUST be one of: hero, gallery, features, specs, product-grid, brand, story, contact
-  - layout: { variant, columns?, alignment?, width?, emphasis?, background?, imageRatio? }
-    - variant vocabulary (pick DIFFERENT variants per direction):
-      hero: split-editorial | full-bleed | centered-stage | type-led | asymmetric
-      gallery: editorial-grid | masonry-lite | image-rail | cinematic-stage
-      features: bento | numbered-story | illustrated-list | side-by-side
-      specs: tabs | information-cards | technical-table | accordion
-      product-grid: interactive-product-selector | comparison | horizontal-showcase
-      story: sticky-split | staggered-story | full-width-manifesto
-      contact: editorial-banner | floating-cta | compact-contact
-    - width: narrow|standard|wide|full; emphasis: image-led|text-led|balanced
-    - background: plain|surface|inverted|accent|gradient
-    - imageRatio: square|portrait|landscape|wide
-    - columns: 1–4; alignment: left|center|right
-  - factKeys: semantic fact keys (e.g. "name","description","price"). NEVER UUIDs.
-  - assetRoles: semantic image roles (e.g. "hero","gallery-1","detail"). NEVER UUIDs.
-  - interactionIds: reference interaction specs by short id (e.g. "gallery-1","tabs-main","cta-copy")
-  - motionId: reference motion spec by short id (e.g. "hero-entrance","scroll-story")
-- contentWidth: narrow|standard|wide|full; visualRhythm: calm|layered|punchy
+SITE BLUEPRINT (each direction carries one siteBlueprint object; nesting MUST match this exactly):
+siteBlueprint = {
+  "contentWidth": "narrow|standard|wide|full",   // blueprint level — sibling of "pages", NEVER inside a page
+  "visualRhythm": "calm|layered|punchy",         // blueprint level — sibling of "pages", NEVER inside a page
+  "pages": [                                     // 1–3 pages
+    {
+      "slug": "",                                // "" for the root page; lowercase hyphen slugs otherwise
+      "title": "…",
+      "sections": [                              // 1–12 sections
+        {
+          "type": "…",                           // one of: hero, gallery, features, specs, product-grid, brand, story, contact
+          "layout": {
+            "variant": "…",                      // from the variant vocabulary below
+            "columns": 1,                        // integer 1–4
+            "alignment": "left|center|right",
+            "width": "narrow|standard|wide|full",
+            "emphasis": "image-led|text-led|balanced",
+            "background": "plain|surface|inverted|accent|gradient",
+            "imageRatio": "square|portrait|landscape|wide"
+          },
+          "factKeys": ["name", "description"],   // semantic fact keys. NEVER UUIDs.
+          "assetRoles": ["hero", "gallery-1"],   // semantic image roles. NEVER UUIDs.
+          "interactionIds": ["gallery-1"],       // short ids referenced from the INTERACTION PLAN below
+          "motionId": "hero-entrance",           // short id referenced from the MOTION PLAN below
+          "note": "…"                            // interaction options + layout notes
+        }
+      ]
+    }
+  ]
+}
+- A page object has ONLY slug, title, sections. contentWidth/visualRhythm belong to siteBlueprint itself.
+- variant vocabulary (pick DIFFERENT variants per direction):
+  hero: split-editorial | full-bleed | centered-stage | type-led | asymmetric
+  gallery: editorial-grid | masonry-lite | image-rail | cinematic-stage
+  features: bento | numbered-story | illustrated-list | side-by-side
+  specs: tabs | information-cards | technical-table | accordion
+  product-grid: interactive-product-selector | comparison | horizontal-showcase
+  story: sticky-split | staggered-story | full-width-manifesto
+  contact: editorial-banner | floating-cta | compact-contact
 
 INTERACTION PLAN (embed in siteBlueprint sections via interactionIds):
 Supported kinds: gallery-carousel, image-zoom, tabs, accordion, product-hotspots, product-compare, image-before-after, copy-contact, anchor-navigation
@@ -91,10 +109,12 @@ VISUAL QUALITY:
 - Avoid: default purple gradients for everything, glassmorphism overload, every section as identical cards
 
 Constraints:
-- approvedByClient must be false. factVersion must match the current facts version exactly.
+- Do NOT output approvedByClient or factVersion — the system stamps them after validation.
 - version must be 1 for all new directions.
 - Only reference fact keys that exist in the supplied verified facts. Do not invent product claims.
 - Do not invent database UUIDs anywhere.
+- All numbers must be bare JSON numbers — version and factVersion as integers, columns/gutter/spacingScale/radiusScale as numbers. Never strings, never "px" values. Exception: typography values (including scale) are always strings.
+- Emit every field exactly once. Add no fields beyond the schema — no missingInputs, assumptionsToConfirm, recommendedStyleId or similar; caveats go into rationale or section note.
 - Each direction is one coherent art direction, not a random mix.`;
 
 const GENERATE_BLUEPRINT_RULES = `DESIGN BLUEPRINT ADHERENCE: the approved design includes a siteBlueprint. Your site MUST keep its page structure: same page slugs, same section types in the same order, same layout variants (props.variant / props.columns / props.alignment / props.width / props.emphasis / props.background / props.imageRatio). You may fill in full content and real factRefs/assetRefs, but you may NOT change the approved composition. If a layout cannot be realized due to missing assets, keep the section and return empty assetRefs rather than switching to a different composition.`;
@@ -169,50 +189,65 @@ export async function runOne(workerId?: string) {
     else if (run.role === 'design') {
       assert(context.brief, 'BRIEF_APPROVAL_REQUIRED');
       const attempt = (feedback?: string) =>
-        callMimo(DesignChoices, 'creative director', {
+        callMimo(ModelDesignChoices, 'creative director', {
           ...context,
           previousDesignFeedback: feedback ?? null,
           task: feedback
             ? `${DESIGN_TASK}\n\nPREVIOUS ATTEMPT FEEDBACK (must fix):\n${feedback}`
             : DESIGN_TASK,
         });
-      let result = await attempt();
+      // The model drifts on the big strict schema; one feedback retry with the exact
+      // field-level issues recovers far more often than a blind re-run.
+      const attemptWithSchemaRetry = async (feedback?: string): ReturnType<typeof attempt> => {
+        try {
+          return await attempt(feedback);
+        } catch (error) {
+          if (
+            error instanceof AppError &&
+            error.code === 'MIMO_SCHEMA_INVALID' &&
+            error.schemaIssues?.length
+          ) {
+            const schemaFeedback = `Your previous JSON violated the output contract. Fix EXACTLY these issues and change nothing else: ${error.schemaIssues
+              .map((i) => `${i.path || '(root)'}: ${i.code}`)
+              .join('; ')}. Every field the schema requires must be present. typography values including scale are strings; other numbers are bare JSON numbers.`;
+            return attempt(feedback ? `${feedback}\n\n${schemaFeedback}` : schemaFeedback);
+          }
+          throw error;
+        }
+      };
+      // Bookkeeping fields are stamped server-side after validation, never taken from
+      // model output (same rule as directionId). The model-facing contract accepts
+      // anything for them, so a stale or forged claim can neither fail the task nor
+      // survive it: approvedByClient is always false here (only the approval flow sets
+      // it true) and factVersion always equals the facts snapshot this run used.
+      const stamp = (choices: ModelDesignSystemType[]): DesignSystemType[] =>
+        choices.map((choice) => ({
+          ...choice,
+          approvedByClient: false,
+          factVersion: context.p.fact_version,
+          directionId: randomUUID(),
+        }));
+      let result = await attemptWithSchemaRetry();
       usage = { attempt1: result.usage };
       // New directions must carry a Site Blueprint; legacy stored outputs may lack it.
       assert(
         result.output.choices.every((c) => c.siteBlueprint),
         'SITE_BLUEPRINT_REQUIRED',
       );
-      assert(
-        result.output.choices.every(
-          (x) => !x.approvedByClient && x.factVersion === context.p.fact_version,
-        ),
-        'INVALID_DESIGN_APPROVAL',
-      );
-      let distinct = checkDesignDistinctness(result.output.choices);
+      let distinct = checkDesignDistinctness(stamp(result.output.choices));
       if (!distinct.pass) {
-        const retry = await attempt(distinct.feedback);
+        const retry = await attemptWithSchemaRetry(distinct.feedback);
         usage = { attempt1: (usage as any).attempt1, attempt2: retry.usage };
         assert(
           retry.output.choices.every((c) => c.siteBlueprint),
           'SITE_BLUEPRINT_REQUIRED',
         );
-        assert(
-          retry.output.choices.every(
-            (x) => !x.approvedByClient && x.factVersion === context.p.fact_version,
-          ),
-          'INVALID_DESIGN_APPROVAL',
-        );
         result = retry;
-        distinct = checkDesignDistinctness(result.output.choices);
+        distinct = checkDesignDistinctness(stamp(result.output.choices));
         assert(distinct.pass, 'DESIGN_DIRECTIONS_NOT_DISTINCT');
       }
-      // directionId is assigned server-side after schema validation, never taken from model output.
       output = {
-        choices: result.output.choices.map((choice) => ({
-          ...choice,
-          directionId: randomUUID(),
-        })),
+        choices: stamp(result.output.choices),
         distinctness: {
           distinctDimensions: distinct.distinctDimensions,
           identicalDimensions: distinct.identicalDimensions,
