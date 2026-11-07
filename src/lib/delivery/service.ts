@@ -126,9 +126,14 @@ export async function createDelivery(run: Record<string, any>, context: Record<s
     });
   }
   add('site-url.txt', url);
+  const [hosting] =
+    await database()`select is_demo,expires_at from project_entitlements where project_id=${p.id}`;
   add(
     'README-交付说明.md',
-    'OneBoss 宣传素材交付包。包含网站地址、海报、二维码、小红书文案。仅提供素材，不代表已代发或保证获客。\n',
+    'OneBoss 宣传素材交付包。包含网站地址、海报、二维码、小红书文案。仅提供素材，不代表已代发或保证获客。\n' +
+      (hosting?.is_demo
+        ? `DEMO演示项目，无真实收款。托管到期时间：${new Date(hosting.expires_at).toISOString()}；到期可联系服务方续期。\n`
+        : ''),
   );
   const manifest = DeliveryManifest.parse({
     schemaVersion: '1.0',

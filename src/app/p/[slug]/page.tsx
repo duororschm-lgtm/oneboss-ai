@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { cache } from 'react';
 import { creative } from '../../../lib/core/creative';
 import { publicProject } from '../../../lib/publishing/service';
+import { DemoNotice } from '../../../lib/publishing/demo-notice';
 export const dynamic = 'force-dynamic';
 const loadProject = cache(publicProject);
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
@@ -16,5 +17,10 @@ export default async function PublicSite({ params }: { params: Promise<{ slug: s
     data = await loadProject(slug);
   if (!data) notFound();
   const renderer = await creative();
-  return <main data-oneboss-revision={data.revision}>{await renderer.renderSite(data)}</main>;
+  return (
+    <>
+      <DemoNotice demo={data.demo} />
+      <main data-oneboss-revision={data.revision}>{await renderer.renderSite(data)}</main>
+    </>
+  );
 }

@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { cache } from 'react';
 import { creative } from '../../../../lib/core/creative';
 import { publicProject } from '../../../../lib/publishing/service';
+import { DemoNotice } from '../../../../lib/publishing/demo-notice';
 export const dynamic = 'force-dynamic';
 const loadProject = cache(publicProject);
 export async function generateMetadata({
@@ -26,8 +27,11 @@ export default async function PublicSubpage({
   const data = await loadProject(slug);
   if (!data || !data.site.pages.some((p) => p.slug === page[0])) notFound();
   return (
-    <main data-oneboss-revision={data.revision}>
-      {await (await creative()).renderSite({ ...data, pageSlug: page[0] })}
-    </main>
+    <>
+      <DemoNotice demo={data.demo} />
+      <main data-oneboss-revision={data.revision}>
+        {await (await creative()).renderSite({ ...data, pageSlug: page[0] })}
+      </main>
+    </>
   );
 }

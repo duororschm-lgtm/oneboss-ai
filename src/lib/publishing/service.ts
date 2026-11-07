@@ -107,7 +107,7 @@ export async function publishRevision(run: Record<string, any>) {
 export async function publicProject(slug: string) {
   if (!/^[a-z0-9-]{1,100}$/.test(slug)) return null;
   const [p] =
-    await database()`select p.id,p.publish_slug,p.published_revision from projects p join project_entitlements e on e.project_id=p.id where p.publish_slug=${slug} and not e.revoked and e.expires_at>now()`;
+    await database()`select p.id,p.publish_slug,p.published_revision,e.is_demo,e.expires_at from projects p join project_entitlements e on e.project_id=p.id where p.publish_slug=${slug} and not e.revoked and e.expires_at>now()`;
   if (!p?.published_revision) return null;
   const [v] =
     await database()`select body,fact_version from artifact_versions where project_id=${p.id} and revision=${p.published_revision} and status in ('APPROVED','PUBLISHED') and approved_by is not null`;
@@ -138,6 +138,7 @@ export async function publicProject(slug: string) {
     facts: fs,
     assets: publicAssets,
     revision: p.published_revision,
+    demo: p.is_demo ? { expiresAt: new Date(p.expires_at).toISOString() } : undefined,
     publicBasePath: `/p/${p.publish_slug}`,
   };
 }

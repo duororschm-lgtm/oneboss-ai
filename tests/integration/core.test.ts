@@ -16,7 +16,7 @@ import QRCode from 'qrcode';
 import sharp from 'sharp';
 import * as adapters from '../../src/lib/core/creative';
 import { createDelivery } from '../../src/lib/delivery/service';
-import { previewProject } from '../../src/lib/publishing/service';
+import { previewProject, publicProject } from '../../src/lib/publishing/service';
 import { accountWorkspace, projectWorkspace } from '../../src/lib/core/workspace';
 import { adminWorkspace } from '../../src/lib/core/workspace';
 import { registrationLimit } from '../../src/lib/security/registration';
@@ -608,6 +608,19 @@ describe.sequential('real PostgreSQL business invariants', () => {
       await db`update projects set published_revision=${previous.published_revision},published_verified=${previous.published_verified} where id=${projectId}`;
       identity.mockRestore();
       signer.mockRestore();
+    }
+  });
+  it('does not serve expired or revoked demo publication', async () => {
+    const [project] = await db`select publish_slug from projects where id=${projectId}`;
+    const [previous] =
+      await db`select expires_at,revoked from project_entitlements where project_id=${projectId}`;
+    try {
+      await db`update project_entitlements set expires_at=now()-interval '1 second',revoked=false where project_id=${projectId}`;
+      expect(await publicProject(project.publish_slug)).toBeNull();
+      await db`update project_entitlements set expires_at=now()+interval '90 days',revoked=true where project_id=${projectId}`;
+      expect(await publicProject(project.publish_slug)).toBeNull();
+    } finally {
+      await db`update project_entitlements set expires_at=${previous.expires_at},revoked=${previous.revoked} where project_id=${projectId}`;
     }
   });
   it('assembles actual PNG/QR/copy ZIP bytes and accepts only the matching delivery', async () => {
