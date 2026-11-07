@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { database, type Tx } from '../core/db';
 import { assert, AppError } from '../core/errors';
 import { entitlement, facts } from '../core/service';
-import { DesignChoices, Production, ParsedChange, IntakeResult } from '../../contracts';
+import { ModelDesignChoices, Production, ParsedChange, IntakeResult } from '../../contracts';
+import type { DesignSystemType, ModelDesignSystemType } from '../../contracts';
 import { callMimo } from '../mimo/gateway';
 import { validateProduction, validateBlueprintAdherence } from '../core/validation';
 import { checkDesignDistinctness } from '../creative/design-distinctness';
@@ -108,12 +109,11 @@ VISUAL QUALITY:
 - Avoid: default purple gradients for everything, glassmorphism overload, every section as identical cards
 
 Constraints:
-- approvedByClient must be false. factVersion must match the current facts version exactly.
+- Do NOT output approvedByClient or factVersion — the system stamps them after validation.
 - version must be 1 for all new directions.
 - Only reference fact keys that exist in the supplied verified facts. Do not invent product claims.
 - Do not invent database UUIDs anywhere.
 - All numbers must be bare JSON numbers — version and factVersion as integers, columns/gutter/spacingScale/radiusScale as numbers. Never strings, never "px" values. Exception: typography values (including scale) are always strings.
-- approvedByClient (boolean, always false) and factVersion (integer, equal to the current facts version) are REQUIRED on every direction — never omit them.
 - Emit every field exactly once. Add no fields beyond the schema — no missingInputs, assumptionsToConfirm, recommendedStyleId or similar; caveats go into rationale or section note.
 - Each direction is one coherent art direction, not a random mix.`;
 
@@ -178,31 +178,42 @@ export async function runOne() {
     else if (run.role === 'design') {
       assert(context.brief, 'BRIEF_APPROVAL_REQUIRED');
       const attempt = (feedback?: string) =>
-        callMimo(DesignChoices, 'creative director', {
+        callMimo(ModelDesignChoices, 'creative director', {
           ...context,
           previousDesignFeedback: feedback ?? null,
           task: feedback ? `${DESIGN_TASK}\n\nPREVIOUS ATTEMPT FEEDBACK (must fix):\n${feedback}` : DESIGN_TASK,
         });
       // The model drifts on the big strict schema; one feedback retry with the exact
       // field-level issues recovers far more often than a blind re-run.
-      const attemptWithSchemaRetry = async (): ReturnType<typeof attempt> => {
+      const attemptWithSchemaRetry = async (feedback?: string): ReturnType<typeof attempt> => {
         try {
-          return await attempt();
+          return await attempt(feedback);
         } catch (error) {
           if (
             error instanceof AppError &&
             error.code === 'MIMO_SCHEMA_INVALID' &&
             error.schemaIssues?.length
           ) {
-            return attempt(
-              `Your previous JSON violated the output contract. Fix EXACTLY these issues and change nothing else: ${error.schemaIssues
-                .map((i) => `${i.path || '(root)'}: ${i.code}`)
-                .join('; ')}. Every required field (approvedByClient, factVersion, …) must be present. typography values including scale are strings; other numbers are bare JSON numbers.`,
-            );
+            const schemaFeedback = `Your previous JSON violated the output contract. Fix EXACTLY these issues and change nothing else: ${error.schemaIssues
+              .map((i) => `${i.path || '(root)'}: ${i.code}`)
+              .join('; ')}. Every field the schema requires must be present. typography values including scale are strings; other numbers are bare JSON numbers.`;
+            return attempt(feedback ? `${feedback}\n\n${schemaFeedback}` : schemaFeedback);
           }
           throw error;
         }
       };
+      // Bookkeeping fields are stamped server-side after validation, never taken from
+      // model output (same rule as directionId). The model-facing contract accepts
+      // anything for them, so a stale or forged claim can neither fail the task nor
+      // survive it: approvedByClient is always false here (only the approval flow sets
+      // it true) and factVersion always equals the facts snapshot this run used.
+      const stamp = (choices: ModelDesignSystemType[]): DesignSystemType[] =>
+        choices.map((choice) => ({
+          ...choice,
+          approvedByClient: false,
+          factVersion: context.p.fact_version,
+          directionId: randomUUID(),
+        }));
       let result = await attemptWithSchemaRetry();
       usage = { attempt1: result.usage };
       // New directions must carry a Site Blueprint; legacy stored outputs may lack it.
@@ -210,36 +221,20 @@ export async function runOne() {
         result.output.choices.every((c) => c.siteBlueprint),
         'SITE_BLUEPRINT_REQUIRED',
       );
-      assert(
-        result.output.choices.every(
-          (x) => !x.approvedByClient && x.factVersion === context.p.fact_version,
-        ),
-        'INVALID_DESIGN_APPROVAL',
-      );
-      let distinct = checkDesignDistinctness(result.output.choices);
+      let distinct = checkDesignDistinctness(stamp(result.output.choices));
       if (!distinct.pass) {
-        const retry = await attempt(distinct.feedback);
+        const retry = await attemptWithSchemaRetry(distinct.feedback);
         usage = { attempt1: (usage as any).attempt1, attempt2: retry.usage };
         assert(
           retry.output.choices.every((c) => c.siteBlueprint),
           'SITE_BLUEPRINT_REQUIRED',
         );
-        assert(
-          retry.output.choices.every(
-            (x) => !x.approvedByClient && x.factVersion === context.p.fact_version,
-          ),
-          'INVALID_DESIGN_APPROVAL',
-        );
         result = retry;
-        distinct = checkDesignDistinctness(result.output.choices);
+        distinct = checkDesignDistinctness(stamp(result.output.choices));
         assert(distinct.pass, 'DESIGN_DIRECTIONS_NOT_DISTINCT');
       }
-      // directionId is assigned server-side after schema validation, never taken from model output.
       output = {
-        choices: result.output.choices.map((choice) => ({
-          ...choice,
-          directionId: randomUUID(),
-        })),
+        choices: stamp(result.output.choices),
         distinctness: {
           distinctDimensions: distinct.distinctDimensions,
           identicalDimensions: distinct.identicalDimensions,
