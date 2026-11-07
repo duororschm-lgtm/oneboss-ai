@@ -299,6 +299,8 @@ export function ProgressSidebar({
     () => computeProgress(runs, project, needsAction),
     [runs, project, needsAction],
   );
+  // 多个阶段可能指向同一页面（创意设计/等待选择都去 creative），只高亮第一个。
+  const currentKey = WORKFLOW.find((s) => (STAGE_ROUTE[s.key] ?? 'intake') === section)?.key;
 
   return (
     <div className="ob-steps">
@@ -307,7 +309,7 @@ export function ProgressSidebar({
         {WORKFLOW.map((stage) => {
           const status = getWorkflowStatus(stage, runs, null, project, needsAction);
           const href = `/dashboard/projects/${projectId}/${STAGE_ROUTE[stage.key] ?? 'intake'}`;
-          const current = (STAGE_ROUTE[stage.key] ?? 'intake') === section;
+          const current = currentKey === stage.key;
           return (
             <li key={stage.key}>
               <Link
