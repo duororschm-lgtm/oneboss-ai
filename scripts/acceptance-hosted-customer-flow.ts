@@ -38,7 +38,9 @@ export async function verifyHostedCustomerFlow({
       ? { proxy: { server: process.env.HTTPS_PROXY, bypass: 'localhost,127.0.0.1' } }
       : {}),
   });
-  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } }),
+  const context = await browser.newContext({
+      viewport: { width: formatAcceptance ? 375 : 1280, height: 900 },
+    }),
     page = await context.newPage();
   page.setDefaultTimeout(45000);
   page.setDefaultNavigationTimeout(90000);
