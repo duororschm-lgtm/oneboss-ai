@@ -58,9 +58,15 @@ export async function callMimo<T>(
     ];
     requestBody.tool_choice = { type: 'function', function: { name: 'read_project_facts' } };
   }
-  const timeout = AbortSignal.timeout(
-    ['production team', 'revision editor'].includes(role) ? 180000 : 90000,
-  );
+  // 真实观测：design（creative director）单次调用经常 60–150s，90s 会误杀。
+  // 生成类角色给 180s，其余保持 90s。
+  const longRunning = [
+    'production team',
+    'revision editor',
+    'creative director',
+    'change analyst',
+  ].includes(role);
+  const timeout = AbortSignal.timeout(longRunning ? 180000 : 90000);
   let response: Awaited<ReturnType<typeof proxyFetch>>;
   try {
     response = await proxyFetch(`${base}/chat/completions`, {
