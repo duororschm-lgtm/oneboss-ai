@@ -46,6 +46,24 @@ export default function FinancePage() {
 
   const points = result?.ok ? result.data : [];
 
+  // Compute summary metrics from server data
+  const totals = points.reduce(
+    (acc, p) => ({
+      confirmed: acc.confirmed + p.confirmedMinor,
+      refunded: acc.refunded + p.refundedMinor,
+      net: acc.net + p.netMinor,
+      orders: acc.orders + p.orderCount,
+    }),
+    { confirmed: 0, refunded: 0, net: 0, orders: 0 },
+  );
+
+  const quickRanges = [
+    { label: '近 7 天', days: 6 },
+    { label: '近 14 天', days: 13 },
+    { label: '近 30 天', days: 29 },
+    { label: '近 90 天', days: 89 },
+  ];
+
   const columns: Column<RevenuePoint>[] = [
     { key: 'date', header: '日期', render: (row) => row.date },
     {
@@ -76,6 +94,60 @@ export default function FinancePage() {
         已成功退款＝渠道确认完成的退款；净收款＝到账 − 成功退款；制作中订单金额不计入收入。
         估算经营结余仅作经营参考，不是法定会计利润。
       </Banner>
+
+      {/* Metric summary cards */}
+      <div className="ad-grid ad-grid-4" style={{ marginBottom: 24 }}>
+        <div className="ad-metric">
+          <span className="ad-metric-label">已确认到账</span>
+          <span className="ad-metric-value" style={{ color: '#2563eb' }}>
+            {money(totals.confirmed)}
+          </span>
+          <span className="ad-metric-note">{points.length} 天合计</span>
+        </div>
+        <div className="ad-metric">
+          <span className="ad-metric-label">已成功退款</span>
+          <span className="ad-metric-value" style={{ color: '#dc2626' }}>
+            {money(totals.refunded)}
+          </span>
+          <span className="ad-metric-note">{points.length} 天合计</span>
+        </div>
+        <div className="ad-metric">
+          <span className="ad-metric-label">净收款</span>
+          <span className="ad-metric-value" style={{ color: '#16794a' }}>
+            {money(totals.net)}
+          </span>
+          <span className="ad-metric-note">到账 − 成功退款</span>
+        </div>
+        <div className="ad-metric">
+          <span className="ad-metric-label">订单总数</span>
+          <span className="ad-metric-value">{totals.orders.toLocaleString('zh-CN')}</span>
+          <span className="ad-metric-note">已创建订单</span>
+        </div>
+      </div>
+
+      {/* Quick range buttons */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+        {quickRanges.map((r) => (
+          <button
+            key={r.days}
+            className="ad-btn"
+            style={{
+              padding: '6px 14px',
+              fontSize: 13,
+              borderRadius: 8,
+              border: `1px solid ${from === daysAgo(r.days) ? '#2563eb' : '#d1d5db'}`,
+              background: from === daysAgo(r.days) ? '#eff6ff' : '#fff',
+              color: from === daysAgo(r.days) ? '#2563eb' : '#374151',
+            }}
+            onClick={() => {
+              setFrom(daysAgo(r.days));
+              setTo(daysAgo(0));
+            }}
+          >
+            {r.label}
+          </button>
+        ))}
+      </div>
 
       <Card padding={false}>
         <div className="ad-toolbar">
