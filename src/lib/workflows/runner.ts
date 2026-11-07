@@ -99,12 +99,12 @@ Constraints:
 
 const GENERATE_BLUEPRINT_RULES = `DESIGN BLUEPRINT ADHERENCE: the approved design includes a siteBlueprint. Your site MUST keep its page structure: same page slugs, same section types in the same order, same layout variants (props.variant / props.columns / props.alignment / props.width / props.emphasis / props.background / props.imageRatio). You may fill in full content and real factRefs/assetRefs, but you may NOT change the approved composition. If a layout cannot be realized due to missing assets, keep the section and return empty assetRefs rather than switching to a different composition.`;
 
-export async function claimRun() {
+export async function claimRun(workerId?: string) {
   const token = randomUUID();
   // Expired leases can be reclaimed; final expired attempt becomes terminal, never stranded.
   await database().begin(async (tx) => {
     const expired =
-      await tx`update agent_runs set status='FAILED',error_class='LEASE_EXHAUSTED',lease_token=null,lease_until=null,completed_at=now() where status='RUNNING' and lease_until<now() and attempt>=max_attempts returning project_id,role,input`;
+      await tx`update agent_runs set status='FAILED',stage='lease-exhausted',error_class='LEASE_EXHAUSTED',lease_token=null,lease_until=null,completed_at=now() where status='RUNNING' and lease_until<now() and attempt>=max_attempts returning project_id,role,input`;
     for (const job of expired) {
       await tx`update projects set status='GENERATION_FAILED' where id=${job.project_id}`;
       if (job.role === 'change') {
@@ -114,7 +114,7 @@ export async function claimRun() {
     }
   });
   const [run] =
-    await database()`update agent_runs set status='RUNNING',attempt=attempt+1,lease_token=${token},lease_until=now()+interval '5 minutes' where id=(select id from agent_runs where ((status='QUEUED' and next_attempt_at<=now()) or (status='RUNNING' and lease_until<now())) and attempt<max_attempts order by created_at for update skip locked limit 1) returning *`;
+    await database()`update agent_runs set status='RUNNING',attempt=attempt+1,lease_token=${token},worker_id=${workerId ?? null},stage='preparing',lease_until=now()+interval '5 minutes' where id=(select id from agent_runs where ((status='QUEUED' and next_attempt_at<=now()) or (status='RUNNING' and lease_until<now())) and attempt<max_attempts order by created_at for update skip locked limit 1) returning *`;
   return run;
 }
 async function snapshot(run: Record<string, any>) {
@@ -141,8 +141,8 @@ async function snapshot(run: Record<string, any>) {
     };
   });
 }
-export async function runOne() {
-  const run = await claimRun();
+export async function runOne(workerId?: string) {
+  const run = await claimRun(workerId);
   if (!run) return false;
   let usage: unknown = {};
   const heartbeat = setInterval(() => {
@@ -152,6 +152,8 @@ export async function runOne() {
   }, 30000);
   try {
     const context = await snapshot(run);
+    const stage = run.role === 'generate' || run.role === 'change' ? 'model-production' : run.role === 'design' || run.role === 'intake' ? 'model-analysis' : run.role === 'publish' ? 'publishing' : 'rendering-delivery';
+    await database()`update agent_runs set stage=${stage} where id=${run.id} and lease_token=${run.lease_token} and status='RUNNING'`;
     let output: unknown;
     if (run.role === 'publish') output = await publishRevision(run);
     else if (run.role === 'delivery') output = await createDelivery(run, context);
@@ -326,7 +328,7 @@ Based on the asset quality assessment:
         if (value.requiresFactApproval)
           await tx`update project_entitlements set remaining_revisions=remaining_revisions+1 where order_id=${p.service_order_id}`;
       }
-      await tx`update agent_runs set status='SUCCEEDED',error_class=null,output=${tx.json(output as any)},usage=${tx.json(usage as any)},lease_token=null,lease_until=null,completed_at=now() where id=${run.id}`;
+      await tx`update agent_runs set status='SUCCEEDED',stage='completed',error_class=null,output=${tx.json(output as any)},usage=${tx.json(usage as any)},lease_token=null,lease_until=null,completed_at=now() where id=${run.id}`;
     });
   } catch (error) {
     const code =
@@ -362,7 +364,7 @@ Based on the asset quality assessment:
     );
     await database().begin(async (tx) => {
       const rows =
-        await tx`update agent_runs set status=${terminal ? 'FAILED' : 'QUEUED'},error_class=${code},usage=${tx.json(usage as any)},lease_token=null,lease_until=null,completed_at=${terminal ? new Date() : null},next_attempt_at=now()+${run.attempt * 10}*interval '1 second' where id=${run.id} and lease_token=${run.lease_token} returning id`;
+        await tx`update agent_runs set status=${terminal ? 'FAILED' : 'QUEUED'},stage=${terminal ? 'failed' : 'retry-wait'},error_class=${code},usage=${tx.json(usage as any)},lease_token=null,lease_until=null,completed_at=${terminal ? new Date() : null},next_attempt_at=now()+${run.attempt * 10}*interval '1 second' where id=${run.id} and lease_token=${run.lease_token} returning id`;
       if (rows.length && terminal) {
         await tx`update projects set status='GENERATION_FAILED' where id=${run.project_id}`;
         if (run.role === 'change') {

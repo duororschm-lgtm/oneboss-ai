@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { fetchRevenue, ENDPOINTS, type AdminResult } from '../../../../lib/admin/api';
 import type { RevenuePoint } from '../../../../lib/admin/types';
 import { money } from '../../../../lib/admin/format';
@@ -32,17 +32,19 @@ export default function FinancePage() {
   const [to, setTo] = useState(daysAgo(0));
   const [groupBy, setGroupBy] = useState<'day' | 'week' | 'month'>('day');
   const [result, setResult] = useState<AdminResult<RevenuePoint[]> | null>(null);
+  const [daily, setDaily] = useState<AdminResult<RevenuePoint[]> | null>(null);
+  const [revision,setRevision] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setResult(await fetchRevenue(from, to, groupBy));
-    setLoading(false);
-  }, [from, to, groupBy]);
-
   useEffect(() => {
-    void load();
-  }, [load]);
+    let live=true;
+    setLoading(true);
+    void Promise.all([fetchRevenue(from,to,groupBy),fetchRevenue(from,to,'day')]).then(([series,detail])=>{
+      if(live){setResult(series);setDaily(detail);setLoading(false);}
+    });
+    return ()=>{live=false;};
+  }, [from,to,groupBy,revision]);
+  const refresh=()=>setRevision(value=>value+1);
 
   const points = result?.ok ? result.data : [];
 
@@ -65,7 +67,7 @@ export default function FinancePage() {
         title="财务与收入"
         description="口径由服务端统计接口定义。订单总额不等于到账，模拟支付不计入收入，退款申请中不提前扣减。"
         actions={
-          <button className="ad-btn" onClick={() => void load()} disabled={loading}>
+          <button className="ad-btn" onClick={() => refresh()} disabled={loading}>
             刷新
           </button>
         }
@@ -73,7 +75,7 @@ export default function FinancePage() {
 
       <Banner tone="info">
         <strong>口径说明</strong>：订单总额＝已创建订单应付金额总和；已确认到账＝渠道可信确认或授权人工核验的成功收款；
-        已成功退款＝渠道确认完成的退款；净收款＝到账 − 成功退款；制作中订单金额不计入收入。
+        已成功退款＝按实际确认到账时间统计的退款；历史确认时间未知的退款不推定日期，须另行核对。净收款＝到账 − 成功退款；制作中订单金额不计入收入。
         估算经营结余仅作经营参考，不是法定会计利润。
       </Banner>
 
@@ -109,7 +111,7 @@ export default function FinancePage() {
               <div className="ad-card-body">
                 <RevenueChart points={points} />
               </div>
-              <DataTable columns={columns} rows={points} rowKey={(row) => row.date} caption="收入明细" />
+              <DataTable columns={columns} rows={daily?.ok ? daily.data : []} rowKey={(row) => row.date} caption="每日收入明细（北京时间）" />
             </>
           ) : (
             <EmptyState title="所选区间无收款记录" detail="调整日期范围后重试。" />
@@ -125,7 +127,7 @@ export default function FinancePage() {
             }
           />
         ) : result && result.kind === 'error' ? (
-          <ErrorState message={result.message} requestId={result.requestId} onRetry={() => void load()} />
+          <ErrorState message={result.message} requestId={result.requestId} onRetry={() => refresh()} />
         ) : null}
       </Card>
 

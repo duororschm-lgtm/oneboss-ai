@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { database, transaction, type Tx, type Actor } from './db';
 import { assert, AppError } from './errors';
+import { can, type Capability, type AdminRole } from '../admin/permissions';
 import { recordAudit } from './audit';
 import { Brief, ChangeRequest, Fact, Id, Money } from '../../contracts';
 export const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
@@ -50,7 +51,7 @@ export async function idempotent(
 ) {
   assert(/^[a-zA-Z0-9_-]{8,100}$/.test(key), 'IDEMPOTENCY_KEY_REQUIRED');
   return transaction(actor, async (tx) => {
-    if (access === 'platform') await platformAdmin(tx, actor);
+    if (access === 'platform') await platformAdmin(tx, actor,route.endsWith('confirm-manual') ? 'act.payment' : route.endsWith('finalize-refund') ? 'act.refund' : 'view.dashboard');
     else await member(tx, actor, orgId);
     // Serialize across requests/processes before reading the cached response.
     await tx`select pg_advisory_xact_lock(hashtextextended(${actor.userId + ':' + key},0))`;
@@ -136,12 +137,12 @@ export async function createQuote(
     await tx`insert into quotes(org_id,plan_code,amount_minor,currency,plan_snapshot) values(${orgId},${plan.code},${total},${plan.currency},${tx.json(snapshot)}) returning *`;
   return q;
 }
-export async function createOrder(tx: Tx, orgId: string, quoteId: string, isDemo: boolean) {
+export async function createOrder(tx: Tx, orgId: string, quoteId: string, isDemo: boolean, paymentChannel: 'wechat' | 'alipay' = 'wechat') {
   const [q] =
     await tx`select * from quotes where id=${Id.parse(quoteId)} and org_id=${orgId} and expires_at>now() for update`;
   assert(q, 'QUOTE_EXPIRED_OR_MISSING');
   const [o] =
-    await tx`insert into service_orders(org_id,quote_id,amount_minor,currency,plan_snapshot,terms_snapshot,is_demo) values(${orgId},${q.id},${q.amount_minor},${q.currency},${tx.json(q.plan_snapshot)},${tx.json({ version: '2026-11-v1', service: '宣传网站、海报与文案制作，不承诺获客', refundPolicy: '人工审核，退款申请不代表到账', revisions: q.plan_snapshot.revision_rounds, hostingDays: q.plan_snapshot.hosting_days })},${isDemo}) returning *`;
+    await tx`insert into service_orders(org_id,quote_id,amount_minor,currency,plan_snapshot,terms_snapshot,is_demo,payment_channel) values(${orgId},${q.id},${q.amount_minor},${q.currency},${tx.json(q.plan_snapshot)},${tx.json({ version: '2026-11-v1', service: '宣传网站、海报与文案制作，不承诺获客', refundPolicy: '人工审核，退款申请不代表到账', revisions: q.plan_snapshot.revision_rounds, hostingDays: q.plan_snapshot.hosting_days })},${isDemo},${isDemo ? null : paymentChannel}) returning *`;
   await tx`insert into service_order_items(org_id,order_id,sku,qty,unit_minor,total_minor) values(${orgId},${o.id},${q.plan_code},1,${q.plan_snapshot.price_minor},${q.plan_snapshot.price_minor})`;
   for (const item of q.plan_snapshot.addons ?? [])
     await tx`insert into service_order_items(org_id,order_id,sku,qty,unit_minor,total_minor) values(${orgId},${o.id},${item.code},${item.qty},${item.unit_minor},${item.total_minor})`;
@@ -159,7 +160,7 @@ export async function adminOrder(tx: Tx, actor: Actor, id: string) {
   assert(o, 'NOT_FOUND', 404);
   return o;
 }
-export async function checkout(tx: Tx, actor: Actor, id: string, channel: string) {
+export async function checkout(tx: Tx, actor: Actor, id: string, channel: string, paymentChannel?: 'wechat' | 'alipay') {
   const o = await order(tx, actor, id);
   assert(['UNPAID', 'PENDING_CONFIRMATION'].includes(o.pay_state), 'ORDER_NOT_PAYABLE', 409);
   assert(['sandbox', 'manual_verified'].includes(channel), 'LIVE_PROVIDER_NOT_CONFIGURED', 503);
@@ -169,12 +170,20 @@ export async function checkout(tx: Tx, actor: Actor, id: string, channel: string
     403,
   );
   assert(channel !== 'manual_verified' || !o.is_demo, 'DEMO_REQUIRES_SANDBOX');
+  const selected = paymentChannel || o.payment_channel || 'wechat';
+  if (channel === 'manual_verified') {
+    assert(['wechat','alipay'].includes(selected), 'INVALID_PAYMENT_CHANNEL');
+    const [report] = await tx`select id from manual_payment_reports where order_id=${o.id} limit 1`;
+    assert(!report || !o.payment_channel || o.payment_channel === selected, 'PAYMENT_CHANNEL_LOCKED', 409);
+    await tx`update service_orders set payment_channel=${selected} where id=${o.id}`;
+    await tx`update payment_attempts set status='CLOSED' where order_id=${o.id} and provider='manual_verified' and status='PENDING' and payment_channel is distinct from ${selected}`;
+  }
   const [existing] =
     await tx`select * from payment_attempts where order_id=${o.id} and provider=${channel} and status='PENDING' order by created_at desc limit 1`;
   const attempt =
     existing ||
     (
-      await tx`insert into payment_attempts(org_id,order_id,provider,amount_minor) values(${o.org_id},${o.id},${channel},${o.amount_minor}) returning *`
+      await tx`insert into payment_attempts(org_id,order_id,provider,amount_minor,payment_channel) values(${o.org_id},${o.id},${channel},${o.amount_minor},${channel === 'manual_verified' ? selected : null}) returning *`
     )[0];
   await tx`update service_orders set pay_state='PENDING_CONFIRMATION' where id=${o.id}`;
   return {
@@ -224,6 +233,7 @@ export async function confirmPayment(
   input: z.infer<typeof Confirmation>,
   channel: 'sandbox' | 'manual_verified',
 ) {
+  if(channel === 'manual_verified') await platformAdmin(tx,actor,'act.payment');
   const o =
     channel === 'manual_verified' ? await adminOrder(tx, actor, id) : await order(tx, actor, id);
   if (channel !== 'manual_verified')
@@ -244,10 +254,14 @@ export async function confirmPayment(
     return { orderId: o.id, payState: o.pay_state, isDemo: o.is_demo };
   }
   assert(
-    ['UNPAID', 'PENDING_CONFIRMATION', 'PAID'].includes(o.pay_state),
+    ['UNPAID', 'PENDING_CONFIRMATION'].includes(o.pay_state),
     'ORDER_NOT_PAYABLE',
     409,
   );
+  assert(a.status === 'PENDING', 'PAYMENT_ATTEMPT_NOT_PENDING', 409);
+  assert(channel !== 'manual_verified' || a.payment_channel === o.payment_channel, 'PAYMENT_CHANNEL_MISMATCH', 409);
+  const [priorPayment] = await tx`select order_id from payment_events where order_id=${o.id} limit 1`;
+  assert(!priorPayment, 'ORDER_ALREADY_CONFIRMED', 409);
   await tx`insert into payment_events(org_id,order_id,provider,event_id,payload_hash,verified_by) values(${o.org_id},${o.id},${channel},${input.eventId},${digest},${actor.userId})`;
   await tx`update payment_attempts set status='CONFIRMED',external_ref=coalesce(external_ref,${input.evidenceRef}) where id=${a.id}`;
   await tx`update service_orders set pay_state='PAID' where id=${o.id}`;
@@ -257,6 +271,7 @@ export async function confirmPayment(
     await recordAudit(tx, actor, {
       action: 'confirm-manual',
       target: o.order_no,
+      targetId: o.id,
       result: 'success',
       reason: input.evidenceRef,
       details: { amountMinor: o.amount_minor, attemptId: a.id },
@@ -294,12 +309,13 @@ export async function finalizeRefund(
   reference: string,
   confirmed: boolean,
 ) {
+  await platformAdmin(tx,actor,'act.refund');
   const o = await adminOrder(tx, actor, id);
   const [r] =
     await tx`select * from refunds where id=${Id.parse(refundId)} and order_id=${o.id} for update`;
   assert(r && r.status === 'REQUESTED', 'REFUND_NOT_PENDING', 409);
   assert(reference.length >= 8 && reference.length <= 200, 'EVIDENCE_REQUIRED');
-  await tx`update refunds set status=${confirmed ? 'CONFIRMED' : 'REJECTED'},provider_ref=${reference},confirmed_by=${actor.userId} where id=${r.id}`;
+  await tx`update refunds set status=${confirmed ? 'CONFIRMED' : 'REJECTED'},provider_ref=${reference},confirmed_by=${actor.userId},confirmed_at=${confirmed ? tx`now()` : tx`null`} where id=${r.id}`;
   const [{ total }] =
     await tx`select coalesce(sum(amount_minor),0)::int total from refunds where order_id=${o.id} and status='CONFIRMED'`;
   const state = total === o.amount_minor ? 'REFUNDED' : total > 0 ? 'PARTIALLY_REFUNDED' : 'PAID';
@@ -308,6 +324,7 @@ export async function finalizeRefund(
   await recordAudit(tx, actor, {
     action: confirmed ? 'finalize-refund-confirm' : 'finalize-refund-reject',
     target: o.order_no,
+    targetId: o.id,
     result: 'success',
     reason: reference,
     details: { refundId: r.id, amountMinor: r.amount_minor },
@@ -438,7 +455,9 @@ export async function requestChange(
   return enqueue(tx, actor, id, 'change', { changeId: c.id });
 }
 
-export async function platformAdmin(tx: Tx, actor: Actor) {
-  const [a] = await tx`select user_id from platform_admins where user_id=${actor.userId}`;
+export async function platformAdmin(tx: Tx, actor: Actor, capability: Capability = 'view.dashboard') {
+  const [a] = await tx`select user_id,role from platform_admins where user_id=${actor.userId}`;
   assert(a, 'PLATFORM_ADMIN_REQUIRED', 403);
+  assert(can(a.role as AdminRole,capability),'ADMIN_CAPABILITY_REQUIRED',403);
+  return a.role as AdminRole;
 }

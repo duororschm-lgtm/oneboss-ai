@@ -3,6 +3,7 @@ import { randomUUID, generateKeyPairSync } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { database, closeDatabase, transaction } from '../../src/lib/core/db';
 import * as core from '../../src/lib/core/service';
+import * as adminStats from '../../src/lib/admin/server';
 import { claimRun, runOne } from '../../src/lib/workflows/runner';
 import * as gateway from '../../src/lib/mimo/gateway';
 import * as network from '../../src/lib/security/network';
@@ -121,7 +122,7 @@ describe.sequential('real PostgreSQL business invariants', () => {
     const q = await transaction(owner, (tx) =>
       core.createQuote(tx, orgId, 'basic', [{ code: 'extra-poster', qty: 2 }]),
     );
-    expect(q.amount_minor).toBe(20099);
+    expect(q.amount_minor).toBe(497);
     expect(q.plan_snapshot.poster_count).toBe(4);
     const o = await transaction(owner, (tx) => core.createOrder(tx, orgId, q.id, true));
     const items = await db`select * from service_order_items where order_id=${o.id}`;
@@ -213,6 +214,13 @@ describe.sequential('real PostgreSQL business invariants', () => {
       await db`select count(*)::int events from payment_events where order_id=${orderId}`;
     expect(events).toBe(1);
   });
+  it('rejects a new event ID after payment was confirmed', async () => {
+    await expect(transaction(owner, (tx) => core.confirmPayment(tx, owner, orderId, {
+      attemptId, eventId: 'second-distinct-event', amountMinor: 199, currency: 'CNY',
+      evidenceRef: 'second-distinct-evidence',
+    }, 'sandbox'))).rejects.toThrow();
+    expect((await db`select count(*)::int n from payment_events where order_id=${orderId}`)[0].n).toBe(1);
+  });
   it('creates exactly one project from the authorized order', async () => {
     const p = await transaction(owner, (tx) => core.createProject(tx, owner, orderId));
     projectId = p.id;
@@ -300,6 +308,42 @@ describe.sequential('real PostgreSQL business invariants', () => {
       ).count,
     ).toBe(0);
     await db`update agent_runs set status='FAILED' where id=${r.id}`;
+  });
+  it('persists attributed transitions, isolates task events and detects stale workers', async()=>{
+    const [run]=await db`select * from agent_runs where project_id=${projectId} order by created_at desc limit 1`;
+    expect(run.employee_key).toBe('product_analyst');
+    const events=await db`select * from task_events where run_id=${run.id} order by id`;
+    expect(events.map(e=>e.status)).toContain('QUEUED');
+    expect(events.some(e=>e.attempt===2)).toBe(true);
+    await expect(db`update task_events set status='FAKE' where run_id=${run.id}`).rejects.toThrow('TASK_EVENTS_APPEND_ONLY');
+    await expect(transaction(stranger,tx=>projectWorkspace(tx,stranger,projectId))).rejects.toThrow('FORBIDDEN');
+    const workerId=randomUUID();
+    await db`insert into worker_instances(id,version,last_seen_at) values(${workerId},'test','2020-01-01')`;
+    expect((await transaction(staff,tx=>adminStats.workerHealth(tx,staff)))[0].status).toBe('offline');
+    await db`update worker_instances set last_seen_at=now() where id=${workerId}`;
+    expect((await transaction(staff,tx=>adminStats.workerHealth(tx,staff)))[0].status).toBe('online');
+  });
+  it('enforces finance and reviewer roles on the server, preserving legacy owners',async()=>{
+    const finance={userId:randomUUID()},reviewer={userId:randomUUID()};
+    await db`insert into platform_admins(user_id,role) values(${finance.userId},'finance'),(${reviewer.userId},'reviewer')`;
+    expect(await transaction(staff,tx=>core.platformAdmin(tx,staff,'view.audit'))).toBe('owner');
+    expect(await transaction(finance,tx=>core.platformAdmin(tx,finance,'act.payment'))).toBe('finance');
+    await expect(transaction(reviewer,tx=>core.platformAdmin(tx,reviewer,'act.payment'))).rejects.toThrow('ADMIN_CAPABILITY_REQUIRED');
+    await expect(transaction(finance,tx=>adminStats.agentRuns(tx,finance,{page:1,pageSize:10}))).rejects.toThrow('ADMIN_CAPABILITY_REQUIRED');
+    expect((await transaction(reviewer,tx=>adminWorkspace(tx,reviewer))).manualAttempts).toEqual([]);
+    expect((await transaction(reviewer,tx=>adminStats.overview(tx,reviewer))).todayConfirmedMinor).toBeNull();
+  });
+  it('rolls back manual receipt and entitlement when audit cannot be persisted',async()=>{
+    const quote=await transaction(owner,tx=>core.createQuote(tx,orgId,'basic',[]));
+    const o=await transaction(owner,tx=>core.createOrder(tx,orgId,quote.id,false));
+    const a=await transaction(owner,tx=>core.checkout(tx,owner,o.id,'manual_verified'));
+    await db.unsafe(`create function reject_audit_test() returns trigger language plpgsql as $$ begin raise exception 'AUDIT_UNAVAILABLE_TEST'; end $$; create trigger reject_audit_test before insert on admin_audit_logs for each row execute function reject_audit_test();`);
+    try {
+      await expect(transaction(staff,tx=>core.confirmPayment(tx,staff,o.id,{attemptId:a.attempt.id,eventId:randomUUID(),amountMinor:o.amount_minor,currency:'CNY',evidenceRef:'bank-confirm-test'},'manual_verified'))).rejects.toThrow('AUDIT_UNAVAILABLE_TEST');
+      expect((await db`select pay_state from service_orders where id=${o.id}`)[0].pay_state).toBe('PENDING_CONFIRMATION');
+      expect((await db`select count(*)::int n from payment_events where order_id=${o.id}`)[0].n).toBe(0);
+      expect((await db`select count(*)::int n from project_entitlements where order_id=${o.id}`)[0].n).toBe(0);
+    } finally { await db.unsafe('drop trigger reject_audit_test on admin_audit_logs; drop function reject_audit_test();'); }
   });
   it('finishes exhausted crashed jobs with a timestamp and no active lease', async () => {
     const r = await transaction(owner, (tx) => core.enqueue(tx, owner, projectId, 'intake', {}));
@@ -397,7 +441,11 @@ describe.sequential('real PostgreSQL business invariants', () => {
     }
   });
   it('requires genuinely different direction layouts and retains usage for rejected proposals', async () => {
-    const design = { ...fixture().design, factVersion: 2, approvedByClient: false };
+    const design = { ...fixture().design, factVersion: 2, approvedByClient: false,
+      heroComposition: 'split-editorial', density:'airy', imageTreatment:'framed', motionPreset:'subtle',
+      siteBlueprint: { pages: [{slug:'',title:'首页', sections:[
+        {type:'hero',layout:{variant:'split-editorial'}}, {type:'specs',layout:{variant:'technical-table'}},
+      ]}] } };
     const model = vi.spyOn(gateway, 'callMimo').mockResolvedValue({
       output: {
         choices: [
@@ -415,13 +463,16 @@ describe.sequential('real PostgreSQL business invariants', () => {
       await runOne();
       const [r] = await db`select status,error_class,usage from agent_runs where id=${rejected.id}`;
       expect(r.status).toBe('FAILED');
-      expect(r.error_class).toBe('DUPLICATE_DESIGN_DIRECTION');
-      expect(r.usage.total_tokens).toBe(14);
+      expect(r.error_class).toBe('DESIGN_DIRECTIONS_NOT_DISTINCT');
+      expect(r.usage.attempt1.total_tokens).toBe(14);
+      expect(r.usage.attempt2.total_tokens).toBe(14);
       model.mockResolvedValue({
         output: {
           choices: [
             { ...design, styleId: 'editorial-minimal', layoutMode: 'editorial' },
-            { ...design, styleId: 'future-tech', layoutMode: 'split' },
+            { ...design, styleId: 'future-tech', layoutMode: 'split',
+              heroComposition:'centered-product', density:'dense',imageTreatment:'cutout',
+              typography:{...design.typography,display:'monospace'} },
           ],
         },
         usage: { total_tokens: 15 },
@@ -533,6 +584,28 @@ describe.sequential('real PostgreSQL business invariants', () => {
     expect(review.manualAttempts.find((a) => a.order_id === o.id)?.customer_report).toContain(
       'no real payment',
     );
+  });
+  it('locks new addon prices and distinguishes manual channels without granting reported payments', async () => {
+    const q = await transaction(owner, (tx) => core.createQuote(tx, orgId, 'professional', [
+      {code:'extra-product',qty:1},{code:'extra-poster',qty:1},{code:'extra-revision',qty:1},
+    ]));
+    expect(q.amount_minor).toBe(846);
+    const o = await transaction(owner, (tx) => core.createOrder(tx, orgId, q.id, false, 'alipay'));
+    expect(o.payment_channel).toBe('alipay');
+    const attempt = await transaction(owner, (tx) => core.checkout(tx, owner, o.id, 'manual_verified'));
+    expect(attempt.attempt.payment_channel).toBe('alipay');
+    await transaction(owner, (tx) => core.reportManualPayment(tx, owner, o.id, attempt.attempt.id, 'Isolated manual-flow test, no real funds'));
+    expect(await db`select * from project_entitlements where order_id=${o.id}`).toHaveLength(0);
+    await expect(transaction(owner, (tx) => core.checkout(tx, owner, o.id, 'manual_verified', 'wechat'))).rejects.toThrow('PAYMENT_CHANNEL_LOCKED');
+    const input = { attemptId:attempt.attempt.id, eventId:randomUUID(),amountMinor:846,currency:'CNY' as const,evidenceRef:randomUUID() };
+    await expect(transaction(owner, tx => core.confirmPayment(tx, owner, o.id, input, 'manual_verified'))).rejects.toThrow('PLATFORM_ADMIN_REQUIRED');
+    const results = await Promise.allSettled([input,{...input,eventId:randomUUID()}].map(body =>
+      transaction(staff, tx => core.confirmPayment(tx, staff, o.id, body, 'manual_verified'))));
+    expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1);
+    expect((await db`select count(*)::int n from payment_events where order_id=${o.id}`)[0].n).toBe(1);
+    expect((await db`select plan_snapshot from service_orders where id=${o.id}`)[0].plan_snapshot.addons.map((a:any)=>a.unit_minor)).toEqual([99,99,49]);
+    for (const qty of [-1,0,1.5,11])
+      await expect(transaction(owner,tx=>core.createQuote(tx,orgId,'professional',[{code:'extra-product',qty}]))).rejects.toThrow('INVALID_ADDON_QUANTITY');
   });
   it('requires platform staff, not customer owner, for real manual payment', async () => {
     const q = await transaction(owner, (tx) => core.createQuote(tx, orgId, 'professional'));
@@ -1019,6 +1092,16 @@ describe.sequential('real PostgreSQL business invariants', () => {
         )
       ).payState,
     ).toBe('REFUNDED');
+    const [confirmedRefund] = await db`select confirmed_at from refunds where id=${refund.id}`;
+    expect(confirmedRefund.confirmed_at).not.toBeNull();
+    await db`update refunds set created_at='2026-01-01T00:00:00Z',confirmed_at='2026-02-01T16:30:00Z' where id=${refund.id}`;
+    await db`update service_orders set is_demo=false where id=${orderId}`;
+    const daily = await transaction(staff,tx=>adminStats.revenue(tx,staff,'2026-02-01','2026-02-03','day'));
+    expect(daily.map(p=>[p.date,p.refundedMinor])).toEqual([['2026-02-01',0],['2026-02-02',199],['2026-02-03',0]]);
+    expect(daily[1].netMinor).toBe(-199);
+    await expect(transaction(staff,tx=>adminStats.revenue(tx,staff,'2026-02-30','2026-03-01','day'))).rejects.toThrow('DATE_RANGE_INVALID');
+    await expect(transaction(staff,tx=>adminStats.revenue(tx,staff,'2026-03-01','2026-02-01','day'))).rejects.toThrow('DATE_RANGE_INVALID');
+    expect(await transaction(staff,tx=>adminStats.revenue(tx,staff,'2026-02-01','2026-02-03','week'))).toHaveLength(2);
     await expect(
       transaction(staff, (tx) =>
         core.finalizeRefund(tx, staff, orderId, refund.id, 'refund-reference', true),

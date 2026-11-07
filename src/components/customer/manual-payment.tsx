@@ -13,6 +13,8 @@ export function ManualPayment({
   method: NonNullable<PaymentMethods['manual']>;
   onChanged: () => Promise<void>;
 }) {
+  const channel = order.payment_channel === 'alipay' ? 'alipay' : 'wechat';
+  const channelName = channel === 'alipay' ? '支付宝' : '微信';
   const [attempt, setAttempt] = useState<string>(),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
@@ -23,6 +25,7 @@ export function ManualPayment({
     try {
       const data = await customerApi(`commerce/orders/${order.id}/checkout`, {
         channel: 'manual_verified',
+        paymentChannel: channel,
       });
       setAttempt(data.attempt.id);
       await onChanged();
@@ -40,7 +43,7 @@ export function ManualPayment({
     try {
       await customerApi(`commerce/orders/${order.id}/report-manual-payment`, {
         attemptId: attempt,
-        details: String(fields.get('details')),
+        details: [String(fields.get('details') || ''), fields.get('paidAt') ? `付款时间：${fields.get('paidAt')}` : '', fields.get('transactionRef') ? `交易单号：${fields.get('transactionRef')}` : ''].filter(Boolean).join('\n'),
       });
       setMessage('付款说明已提交，等待人工核验真实到账；订单尚未确认付款。');
       await onChanged();
@@ -52,7 +55,7 @@ export function ManualPayment({
   }
   return (
     <section style={{ marginBottom: 24 }}>
-      <h3>微信收款码 · 人工核验</h3>
+      <h3>{channelName}收款码 · 人工核验</h3>
       <p>
         应付 <strong>{money(order.amount_minor)}</strong> · 付款备注{' '}
         <strong>{order.id.slice(0, 8)}</strong>
@@ -80,13 +83,13 @@ export function ManualPayment({
           disabled={busy || order.checkout_blocked}
           onClick={() => void start()}
         >
-          查看微信收款码，按金额付款
+          查看{channelName}收款码，按金额付款
         </button>
       ) : (
         <div className="ob-card">
           <img
             src={method.qrUrl}
-            alt="微信收款码，收款人 39(**宇)"
+            alt={`${channelName}收款码，收款人 ${method.payeeDisplayName}`}
             style={{
               width: 320,
               maxWidth: '100%',
@@ -95,23 +98,25 @@ export function ManualPayment({
               margin: '0 auto',
             }}
           />
-          <p>用另一台设备扫码，或保存图片后在微信“扫一扫”中从相册识别。</p>
+          <p>用另一台设备扫码，或保存图片后在{channelName}“扫一扫”中从相册识别。</p>
           <a
             href={method.qrUrl}
-            download="BlackCode-微信收款码.png"
+            download={`BlackCode-${channelName}收款码.png`}
             className="ob-button ob-ghost ob-small"
           >
             保存收款码
           </a>
           <form className="ob-form" onSubmit={report}>
+            <label>付款时间（北京时间）<input type="datetime-local" name="paidAt" /></label>
+            <label>交易单号<input name="transactionRef" maxLength={150} /></label>
             <label>
               付款说明
               <textarea
                 name="details"
                 required
                 minLength={1}
-                maxLength={1000}
-                placeholder="填写付款时间、微信交易单号等，便于核对。无需提供密码或银行卡信息。"
+                maxLength={750}
+                placeholder="填写便于核对到账的补充信息。无需提供密码或银行卡信息。"
               />
             </label>
             <label className="ob-check">

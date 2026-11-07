@@ -69,8 +69,9 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
     if (route === 'commerce/payment-methods' && method === 'GET')
       return response({
         wechatNative: wechatAvailable(),
-        manualVerified: !!manualPaymentDetails(),
+        manualVerified: !!(manualPaymentDetails('wechat') || manualPaymentDetails('alipay')),
         manual: manualPaymentDetails(),
+        manualChannels: { wechat: manualPaymentDetails('wechat'), alipay: manualPaymentDetails('alipay') },
         sandbox: false,
       });
     if (route === 'commerce/payments/webhook/wechat' && method === 'POST') {
@@ -93,7 +94,7 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
       }
       return response(await registerAccount(request, body), 201);
     }
-    const actor = await authenticate(request);
+    const actor = { ...(await authenticate(request)), requestId };
     await service.rateLimit(actor);
     if (route === 'core/admin' && method === 'GET')
       return response(await transaction(actor, (tx) => adminWorkspace(tx, actor)));
@@ -353,10 +354,10 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
           }
           if (route === 'commerce/orders') {
             const b = z
-              .object({ orgId: Id, quoteId: Id, isDemo: z.boolean() })
+              .object({ orgId: Id, quoteId: Id, isDemo: z.boolean(), paymentChannel: z.enum(['wechat','alipay']).optional() })
               .strict()
               .parse(body);
-            return service.createOrder(tx, b.orgId, b.quoteId, b.isDemo);
+            return service.createOrder(tx, b.orgId, b.quoteId, b.isDemo, b.paymentChannel);
           }
           if (route === 'core/projects') {
             const b = z.object({ orderId: Id }).strict().parse(body);
@@ -367,10 +368,14 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
               action = path[3];
             if (action === 'checkout') {
               const b = z
-                .object({ channel: z.enum(['sandbox', 'manual_verified']) })
+                .object({ channel: z.enum(['sandbox', 'manual_verified']), paymentChannel: z.enum(['wechat','alipay']).optional() })
                 .strict()
                 .parse(body);
-              return service.checkout(tx, actor, id, b.channel);
+              if (b.channel === 'manual_verified') {
+                const current = await service.order(tx, actor, id);
+                assert(manualPaymentDetails(b.paymentChannel || current.payment_channel || 'wechat'), 'MANUAL_CHANNEL_NOT_CONFIGURED', 503);
+              }
+              return service.checkout(tx, actor, id, b.channel, b.paymentChannel);
             }
             if (action === 'report-manual-payment') {
               const b = z

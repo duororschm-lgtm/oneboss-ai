@@ -309,8 +309,10 @@ function OrderDetail({ id, onChanged }: { id: string; onChanged: () => Promise<v
               </button>
             ) : ['UNPAID', 'PENDING_CONFIRMATION'].includes(order.pay_state) ? (
               <>
-                {methods.manualVerified && methods.manual && !order.is_demo ? (
-                  <ManualPayment order={order} method={methods.manual} onChanged={load} />
+                {!order.is_demo ? (
+                  (methods.manualChannels?.[order.payment_channel === 'alipay' ? 'alipay' : 'wechat'] || (order.payment_channel !== 'alipay' && methods.manual)) ?
+                  <ManualPayment order={order} method={(methods.manualChannels?.[order.payment_channel === 'alipay' ? 'alipay' : 'wechat'] || methods.manual)!} onChanged={load} />
+                  : <Notice>{order.payment_channel === 'alipay' ? '支付宝' : '微信'}人工核验通道待配置，暂不可付款。</Notice>
                 ) : methods.wechatNative && !order.is_demo ? (
                   <>
                     <Notice>

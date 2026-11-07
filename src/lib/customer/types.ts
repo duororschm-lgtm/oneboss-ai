@@ -20,6 +20,8 @@ export type Plan = {
 };
 export type Account = { isAdmin:boolean;organizations: Row[]; orders: Row[]; projects: Row[] };
 export type Run = {
+  stage?: string | null;
+  employee_key?: string;
   id: string;
   role: string;
   factVersion?: number;

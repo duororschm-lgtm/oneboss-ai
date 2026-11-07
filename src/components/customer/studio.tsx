@@ -7,6 +7,7 @@ import type { Workspace, Row, Run } from '../../lib/customer/types';
 import { mapSite, displayFact } from '../../lib/creative/b-mapping';
 import { SiteFrame } from './site-frame';
 import { AssetPicker, DraftPosterCards } from './assets';
+import { useTaskPolling } from './use-task-polling';
 import { directionPreview } from '../../lib/customer/direction-preview';
 
 const roleLabel: Record<string, string> = {
@@ -25,21 +26,16 @@ export function ProjectStudio({ id, section }: { id: string; section: string }) 
   const load = useCallback(async () => {
     try {
       setData(await customerApi<Workspace>(`core/projects/${id}/workspace`));
+      setError('');return true;
     } catch (e) {
-      setError((e as Error).message);
+      setError((e as Error).message);return false;
     }
   }, [id]);
   useEffect(() => {
     void load();
   }, [load]);
   const active = data?.runs.some((r) => ['RUNNING', 'QUEUED'].includes(r.status));
-  useEffect(() => {
-    if (!active) return;
-    const timer = setInterval(() => {
-      if (document.visibilityState === 'visible') void load();
-    }, 7000);
-    return () => clearInterval(timer);
-  }, [active, load]);
+  useTaskPolling(active,load);
   async function action(name: string, body: unknown = {}) {
     setBusy(true);
     setError('');
@@ -116,7 +112,7 @@ export function ProjectStudio({ id, section }: { id: string; section: string }) 
           data={data}
           disabled={busy || active || inactive}
           action={action}
-          reload={load}
+          reload={async()=>{await load();}}
         />
       ) : section === 'creative' ? (
         <CreativeChoices data={data} disabled={busy || active || inactive} action={action} />
@@ -1195,7 +1191,7 @@ function RunList({ runs }: { runs: Run[] }) {
               </span>
               {r.error_class && <p className="ob-code ob-run-error">{r.error_class}</p>}
             </div>
-            <span className="ob-tag">{statusLabel(r.status)}</span>
+            <span className="ob-tag">{statusLabel(r.status)}{r.stage ? ` · ${r.stage}` : ''}</span>
           </div>
         ))
       ) : (

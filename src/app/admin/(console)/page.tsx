@@ -47,8 +47,8 @@ export default function AdminDashboardPage() {
 
   const cards = useMemo(
     () => [
-      { label: '今日确认到账', value: metrics && money(metrics.todayConfirmedMinor), note: '口径：渠道确认或授权人工核验' },
-      { label: '本月净收款', value: metrics && money(metrics.monthNetMinor), note: '到账 − 已成功退款' },
+      { label: '今日确认到账', value: metrics && metrics.todayConfirmedMinor !== null ? money(metrics.todayConfirmedMinor) : '无财务权限', note: '口径：渠道确认或授权人工核验' },
+      { label: '本月净收款', value: metrics && metrics.monthNetMinor !== null ? money(metrics.monthNetMinor) : '无财务权限', note: '到账 − 已成功退款' },
       { label: '累计订单数', value: metrics && metrics.totalOrders.toLocaleString('zh-CN'), note: '不含演示订单口径由后端定义' },
       { label: '待支付核验', value: metrics && String(metrics.pendingPaymentReviews), note: '需要人工核对真实入账' },
       { label: '待制作放行', value: metrics && String(metrics.pendingReleases), note: '付款已确认、等待放行' },

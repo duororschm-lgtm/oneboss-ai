@@ -100,6 +100,7 @@ export const AGENT_ROLES = [
   { key: 'project_manager', name: '项目经理' },
   { key: 'product_analyst', name: '产品分析师' },
   { key: 'creative_director', name: 'AI 创意总监' },
+  { key: 'production_team', name: '复合制作任务（文案、网站、海报）' },
   { key: 'copywriter', name: '宣传文案师' },
   { key: 'site_designer', name: '网站设计师' },
   { key: 'poster_designer', name: '海报设计师' },

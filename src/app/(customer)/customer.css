@@ -383,6 +383,14 @@
   margin-top: 4px;
   accent-color: var(--ob-ink);
 }
+.ob-app .ob-check input[type='radio'],
+.ob-app .ob-check input[type='checkbox'] {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  padding: 0;
+}
+.ob-app .ob-check > span { flex: 1; min-width: 0; }
 .ob-check a {
   text-decoration: underline;
 }

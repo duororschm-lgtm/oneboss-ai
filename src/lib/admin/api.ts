@@ -432,3 +432,9 @@ export async function unsupportedAction(spec: EndpointSpec): Promise<never> {
 export const sampleOrders = (rows: AdminOrder[]) => rows.slice(0, 10);
 export const sampleRefunds = (rows: AdminRefund[]) => rows.filter((r) => r.status === 'REQUESTED');
 export const sampleManual = (rows: ManualAttempt[]) => rows;
+
+export interface WorkerHealth {id:string;version:string;last_seen_at:string;status:'online'|'offline'|'stopped';current_run_id:string|null;}
+export async function fetchWorkerHealth():Promise<AdminResult<WorkerHealth[]>>{
+ try{return {ok:true,mock:false,data:await request<WorkerHealth[]>('/api/admin/agents/workers')};}
+ catch(error){return normalize(error,ENDPOINTS.agentRuns);}
+}

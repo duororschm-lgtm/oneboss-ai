@@ -5,6 +5,7 @@ export type PaymentMethods = {
   wechatNative: boolean;
   manualVerified: boolean;
   manual?: { qrUrl: string; payeeDisplayName: string; instructions: string };
+  manualChannels?: Partial<Record<'wechat' | 'alipay', { qrUrl: string; payeeDisplayName: string; instructions: string }>>;
   ready: boolean;
 };
 export function usePaymentMethods() {
@@ -22,6 +23,7 @@ export function usePaymentMethods() {
           wechatNative: data.wechatNative === true,
           manualVerified: data.manualVerified === true,
           manual: data.manual,
+          manualChannels: data.manualChannels,
           ready: true,
         });
       })
