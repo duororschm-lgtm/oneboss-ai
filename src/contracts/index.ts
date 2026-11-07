@@ -60,6 +60,7 @@ export const SectionTypes = [
   'brand',
   'story',
   'contact',
+  'product-3d',
 ] as const;
 // Section layout primitives shared by Site Blueprint and production SiteSpec.
 // All fields optional so legacy records and minimal model output stay valid.
@@ -309,3 +310,57 @@ export type ProductionType = z.infer<typeof Production>;
 export type SectionLayoutType = z.infer<typeof SectionLayout>;
 export type SiteBlueprintType = z.infer<typeof SiteBlueprint>;
 export type DesignSystemType = z.infer<typeof DesignSystem>;
+
+// --- 3D Model Trust & Exploded View ---
+export const ModelTrust = z.enum([
+  'appearance_3d',
+  'conceptual_exploded',
+  'verified_exploded',
+  'static_fallback',
+]);
+export type ModelTrustType = z.infer<typeof ModelTrust>;
+
+export const ModelAssetRecord = z
+  .object({
+    id: Id,
+    projectId: Id,
+    factVersion: Revision,
+    source: z.enum(['customer', 'generated-provider', 'procedural']),
+    modelTrust: ModelTrust,
+    storagePath: z.string().min(1).max(500),
+    contentHash: z.string().min(1).max(128),
+    approved: z.boolean(),
+    providerTaskId: z.string().max(200).optional(),
+    licenseStatus: z.enum(['customer_authorized', 'provider_generated', 'procedural_concept']),
+    createdAt: z.iso.datetime(),
+  })
+  .strict();
+export type ModelAssetRecordType = z.infer<typeof ModelAssetRecord>;
+
+export const ExplodedViewSpec = z
+  .object({
+    modelAssetId: Id,
+    mode: z.enum(['conceptual_exploded', 'verified_exploded']),
+    parts: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1).max(100),
+            nodeName: z.string().min(1).max(200),
+            label: z.string().min(1).max(100),
+            factRefs: z.array(Id).max(20),
+            explodeOffset: z.tuple([z.number(), z.number(), z.number()]),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(30),
+    camera: z
+      .object({
+        position: z.tuple([z.number(), z.number(), z.number()]),
+        target: z.tuple([z.number(), z.number(), z.number()]),
+      })
+      .strict(),
+  })
+  .strict();
+export type ExplodedViewSpecType = z.infer<typeof ExplodedViewSpec>;

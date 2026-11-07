@@ -1,0 +1,1336 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OneBoss AI 设计引擎 — 3 套方向对比 Demo</title>
+<style>
+  /* ===== Reset & page shell ===== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    background: #111;
+    color: #eee;
+    min-height: 100vh;
+  }
+  .demo-header {
+    text-align: center;
+    padding: 48px 24px 32px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  .demo-header h1 { font-size: 28px; margin-bottom: 8px; }
+  .demo-header p { color: #999; font-size: 15px; line-height: 1.7; max-width: 720px; margin: 0 auto; }
+  .demo-header .badge {
+    display: inline-block;
+    margin-top: 16px;
+    padding: 4px 16px;
+    border: 1px solid #444;
+    border-radius: 20px;
+    font-size: 12px;
+    color: #888;
+  }
+  .compare-note {
+    text-align: center;
+    padding: 0 24px 32px;
+    color: #666;
+    font-size: 13px;
+    max-width: 800px;
+    margin: 0 auto;
+    line-height: 1.8;
+  }
+
+  /* ===== Section labels ===== */
+  .direction-label {
+    text-align: center;
+    padding: 40px 24px 16px;
+  }
+  .direction-label h2 {
+    font-size: 22px;
+    color: #fff;
+    margin-bottom: 6px;
+  }
+  .direction-label p {
+    color: #888;
+    font-size: 13px;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+  .dimension-tag {
+    display: inline-block;
+    margin: 4px 3px;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 11px;
+    background: #222;
+    color: #aaa;
+    border: 1px solid #333;
+  }
+
+  /* ===== Site container (simulates SiteRenderer output) ===== */
+  .site {
+    --st-bg: #f4f0e6;
+    --st-surface: #fbf8f1;
+    --st-text: #23241e;
+    --st-muted: #6f6a5d;
+    --st-accent: #b4552f;
+    --st-accent-text: #fff8ee;
+    --st-border: #dcd3c1;
+    --st-display: Georgia, "Songti SC", serif;
+    --st-body: "Microsoft YaHei", "PingFang SC", sans-serif;
+    --st-mono: "Cascadia Mono", ui-monospace, monospace;
+    --st-scale: 1;
+    --st-space: 1.18;
+    --st-radius: 4px;
+    background: var(--st-bg);
+    color: var(--st-text);
+    font-family: var(--st-body);
+    font-size: calc(15px * var(--st-scale));
+    line-height: 1.65;
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 0 auto 48px;
+    max-width: 1280px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.35);
+    position: relative;
+  }
+
+  /* Nav */
+  .site-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 32px;
+    border-bottom: 1px solid var(--st-border);
+    background: var(--st-bg);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .site-brand {
+    font-family: var(--st-display);
+    font-size: 17px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .site-brand i {
+    display: block;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--st-accent);
+  }
+  .site-nav nav { display: flex; gap: 4px; }
+  .site-nav nav button, .site-nav nav a {
+    background: none;
+    border: none;
+    color: var(--st-muted);
+    font-size: 13px;
+    padding: 6px 14px;
+    cursor: pointer;
+    border-radius: var(--st-radius);
+    text-decoration: none;
+    font-family: inherit;
+  }
+  .site-nav nav button:hover, .site-nav nav a:hover { color: var(--st-text); background: var(--st-surface); }
+  .site-nav nav .nav-cta {
+    color: var(--st-accent-text);
+    background: var(--st-accent);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* Section common */
+  .site-section {
+    padding: 56px 32px;
+    max-width: 1100px;
+    margin-inline: auto;
+  }
+  .site-section.width-narrow { max-width: 720px; }
+  .site-section.width-wide { max-width: 1400px; }
+  .site-section.width-full { max-width: none; }
+
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+  .section-head span {
+    font-family: var(--st-mono);
+    font-size: 12px;
+    color: var(--st-accent);
+    font-weight: 700;
+  }
+  .section-head h2 {
+    font-family: var(--st-display);
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  /* ===== HERO VARIANTS ===== */
+  .hero-section {
+    display: grid;
+    gap: 32px;
+    align-items: center;
+    min-height: 520px;
+    padding-block: 56px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-copy h1 {
+    font-family: var(--st-display);
+    font-size: clamp(1.8rem, 3.5vw, 2.8rem);
+    font-weight: 700;
+    line-height: 1.15;
+    margin-bottom: 16px;
+  }
+  .hero-copy .eyebrow {
+    display: inline-block;
+    font-family: var(--st-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--st-accent);
+    margin-bottom: 12px;
+  }
+  .hero-sub {
+    color: var(--st-muted);
+    font-size: 15px;
+    line-height: 1.75;
+    margin-bottom: 24px;
+    max-width: 520px;
+  }
+  .hero-actions {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .site-primary {
+    background: var(--st-accent);
+    color: var(--st-accent-text);
+    border: none;
+    padding: 12px 28px;
+    border-radius: var(--st-radius);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: inherit;
+  }
+  .hero-price {
+    display: flex;
+    flex-direction: column;
+  }
+  .hero-price small { color: var(--st-muted); font-size: 11px; }
+  .hero-price strong { font-size: 22px; font-family: var(--st-display); }
+  .hero-fact {
+    margin-top: 20px;
+    font-size: 11px;
+    color: var(--st-muted);
+    opacity: 0.7;
+  }
+  .hero-visual {
+    position: relative;
+    border-radius: var(--st-radius);
+    overflow: hidden;
+  }
+  .hero-visual svg, .hero-visual .concept-placeholder {
+    width: 100%;
+    aspect-ratio: 5/4;
+    display: block;
+  }
+  .art-badge {
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+    font-size: 10px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    backdrop-filter: blur(8px);
+  }
+
+  /* Hero: split-editorial (default) */
+  .hero-section.variant-split-editorial { grid-template-columns: 1fr 1.02fr; }
+
+  /* Hero: full-bleed */
+  .hero-section.variant-full-bleed {
+    grid-template-columns: 1fr;
+    padding: 0;
+    min-height: 600px;
+  }
+  .hero-section.variant-full-bleed .hero-visual {
+    position: absolute; inset: 0; z-index: 0; border-radius: 0;
+  }
+  .hero-section.variant-full-bleed .hero-visual .concept-placeholder {
+    width: 100%; height: 100%; aspect-ratio: unset;
+  }
+  .hero-section.variant-full-bleed .hero-copy {
+    position: relative; z-index: 1;
+    background: linear-gradient(135deg, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.15) 100%);
+    padding: 80px 48px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    min-height: 600px;
+  }
+  .hero-section.variant-full-bleed .hero-copy h1,
+  .hero-section.variant-full-bleed .hero-sub,
+  .hero-section.variant-full-bleed .hero-price strong,
+  .hero-section.variant-full-bleed .hero-price small { color: #fff; }
+  .hero-section.variant-full-bleed .hero-copy .eyebrow { color: var(--st-accent); }
+  .hero-section.variant-full-bleed .hero-fact { color: rgba(255,255,255,0.5); }
+
+  /* Hero: type-led */
+  .hero-section.variant-type-led { grid-template-columns: 1fr; }
+  .hero-section.variant-type-led .hero-copy h1 {
+    font-size: clamp(3rem, 8vw, 5.5rem);
+    line-height: 0.95;
+    letter-spacing: -0.03em;
+  }
+  .hero-section.variant-type-led .hero-visual { display: none; }
+
+  /* Hero: asymmetric */
+  .hero-section.variant-asymmetric { grid-template-columns: 1.6fr 1fr; }
+  .hero-section.variant-asymmetric .hero-visual {
+    order: -1;
+    transform: rotate(-2deg) scale(1.02);
+  }
+
+  /* Hero: centered-stage */
+  .hero-section.variant-centered-stage {
+    grid-template-columns: 1fr;
+    text-align: center;
+    padding-block: 80px;
+  }
+  .hero-section.variant-centered-stage .hero-copy { margin-inline: auto; max-width: 640px; }
+  .hero-section.variant-centered-stage .hero-sub { margin-inline: auto; }
+  .hero-section.variant-centered-stage .hero-actions { justify-content: center; }
+  .hero-section.variant-centered-stage .hero-visual { margin: 32px auto 0; max-width: 520px; }
+
+  /* ===== GALLERY VARIANTS ===== */
+  .gallery-section { overflow: visible; }
+
+  /* Masonry */
+  .gallery-masonry {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+  }
+  .gallery-masonry.gallery-editorial {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+  .gallery-masonry.gallery-editorial .gallery-cell:first-child {
+    grid-column: span 2; grid-row: span 2;
+  }
+  .gallery-cell {
+    margin: 0;
+    overflow: hidden;
+    border-radius: var(--st-radius);
+    background: var(--st-surface);
+  }
+  .gallery-cell .concept-placeholder {
+    width: 100%; aspect-ratio: 4/3;
+  }
+  .gallery-cell figcaption {
+    font-size: 12px;
+    color: var(--st-muted);
+    padding: 10px 12px;
+  }
+
+  /* Horizontal strip */
+  .gallery-strip {
+    display: flex;
+    overflow-x: auto;
+    gap: 16px;
+    padding-bottom: 12px;
+    scroll-snap-type: x mandatory;
+  }
+  .gallery-strip::-webkit-scrollbar { height: 6px; }
+  .gallery-strip::-webkit-scrollbar-thumb { background: var(--st-border); border-radius: 3px; }
+  .gallery-strip-item {
+    flex: 0 0 280px;
+    margin: 0;
+    scroll-snap-align: start;
+    border-radius: var(--st-radius);
+    overflow: hidden;
+    background: var(--st-surface);
+  }
+  .gallery-strip-item .concept-placeholder { width: 100%; aspect-ratio: 3/4; }
+  .gallery-strip-item figcaption { font-size: 12px; color: var(--st-muted); padding: 10px 12px; }
+
+  /* Featured pair */
+  .gallery-pair {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 20px;
+  }
+  .gallery-pair figure {
+    margin: 0;
+    overflow: hidden;
+    border-radius: var(--st-radius);
+    background: var(--st-surface);
+  }
+  .gallery-pair-main .concept-placeholder { width: 100%; aspect-ratio: 16/10; }
+  .gallery-pair-side .concept-placeholder { width: 100%; aspect-ratio: 3/4; }
+  .gallery-pair figcaption { font-size: 12px; color: var(--st-muted); padding: 10px 12px; }
+
+  /* Carousel (default) */
+  .gallery-stage {
+    position: relative;
+    border-radius: var(--st-radius);
+    overflow: hidden;
+    background: var(--st-surface);
+  }
+  .gallery-stage .concept-placeholder {
+    width: 100%;
+    aspect-ratio: 16/9;
+  }
+  .gallery-caption {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px 16px;
+    font-size: 12px;
+    color: var(--st-muted);
+    background: var(--st-bg);
+    border-top: 1px solid var(--st-border);
+  }
+  .gallery-thumbs {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .gallery-thumbs button {
+    width: 64px; height: 48px;
+    border-radius: 4px;
+    border: 2px solid transparent;
+    overflow: hidden;
+    cursor: pointer;
+    background: var(--st-surface);
+    padding: 0;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+  }
+  .gallery-thumbs button.active { border-color: var(--st-accent); opacity: 1; }
+  .gallery-thumbs .concept-placeholder { width: 100%; height: 100%; }
+
+  /* ===== FEATURES VARIANTS ===== */
+  .feature-card {
+    background: var(--st-surface);
+    border: 1px solid var(--st-border);
+    border-radius: var(--st-radius);
+    padding: 24px;
+  }
+  .feature-card .feature-index {
+    display: block;
+    font-family: var(--st-mono);
+    font-size: 11px;
+    color: var(--st-accent);
+    margin-bottom: 10px;
+    font-weight: 700;
+  }
+  .feature-card h3 {
+    font-family: var(--st-display);
+    font-size: 17px;
+    margin-bottom: 8px;
+    line-height: 1.3;
+  }
+  .feature-card p {
+    color: var(--st-muted);
+    font-size: 13px;
+    line-height: 1.65;
+  }
+
+  /* Bento */
+  .feature-grid.feature-bento {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-auto-rows: minmax(120px, auto);
+    gap: 16px;
+  }
+  .feature-grid.feature-bento .feature-card:first-child {
+    grid-column: span 2; grid-row: span 2;
+  }
+  .feature-grid.feature-bento .feature-card:nth-child(4) { grid-column: span 2; }
+
+  /* Numbered list */
+  .feature-grid.feature-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .feature-grid.feature-list .feature-card {
+    display: grid;
+    grid-template-columns: 60px 1fr;
+    gap: 8px 16px;
+    padding: 24px 0;
+    border: none;
+    border-bottom: 1px solid var(--st-border);
+    border-radius: 0;
+    background: transparent;
+    align-items: baseline;
+  }
+  .feature-grid.feature-list .feature-card .feature-index { font-size: 20px; grid-row: span 2; }
+  .feature-grid.feature-list .feature-card h3 { margin-bottom: 4px; }
+  .feature-grid.feature-list .feature-card p { grid-column: 2; }
+
+  /* Editorial columns */
+  .feature-grid.feature-columns {
+    columns: 3;
+    column-gap: 32px;
+  }
+  .feature-grid.feature-columns .feature-card {
+    break-inside: avoid;
+    margin-bottom: 24px;
+    border: none;
+    border-top: 2px solid var(--st-accent);
+    border-radius: 0;
+    background: transparent;
+    padding: 20px 0 0;
+  }
+
+  /* Horizontal steps */
+  .feature-grid.feature-steps {
+    display: flex;
+    gap: 0;
+  }
+  .feature-grid.feature-steps .feature-card {
+    flex: 1;
+    border: none;
+    border-left: 3px solid var(--st-accent);
+    border-radius: 0;
+    background: transparent;
+    padding: 0 20px;
+  }
+
+  /* ===== SPECS VARIANTS ===== */
+  /* Tabs (default) */
+  .spec-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 0;
+    border-bottom: 2px solid var(--st-border);
+  }
+  .spec-tabs button {
+    background: none;
+    border: none;
+    padding: 12px 20px;
+    font-size: 13px;
+    color: var(--st-muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    font-family: inherit;
+  }
+  .spec-tabs button.active {
+    color: var(--st-accent);
+    border-bottom-color: var(--st-accent);
+    font-weight: 600;
+  }
+  .spec-table > div {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 16px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--st-border);
+    font-size: 14px;
+  }
+  .spec-table > div span { color: var(--st-muted); }
+  .spec-table > div strong { font-weight: 600; }
+  .spec-table > div small { color: var(--st-accent); font-size: 11px; }
+  .spec-table > div.pending { opacity: 0.5; }
+
+  /* Technical table */
+  .spec-technical > div {
+    grid-template-columns: 180px 1fr auto;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Spec cards */
+  .spec-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+  }
+  .spec-card {
+    padding: 20px;
+    background: var(--st-surface);
+    border: 1px solid var(--st-border);
+    border-radius: var(--st-radius);
+  }
+  .spec-card small { display: block; color: var(--st-muted); margin-bottom: 8px; font-size: 12px; }
+  .spec-card strong { display: block; font-size: 18px; font-family: var(--st-display); }
+
+  /* Accordion */
+  .spec-accordion details {
+    border: 1px solid var(--st-border);
+    border-radius: var(--st-radius);
+    margin-bottom: 8px;
+    background: var(--st-surface);
+  }
+  .spec-accordion summary {
+    padding: 16px 20px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    list-style: none;
+  }
+  .spec-accordion summary::before {
+    content: '+';
+    margin-right: 10px;
+    color: var(--st-accent);
+    font-weight: 700;
+  }
+  .spec-accordion details[open] summary::before { content: '−'; }
+  .spec-accordion .spec-table { padding: 0 20px 16px; }
+
+  /* ===== STORY ===== */
+  .story-section {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+    align-items: center;
+  }
+  .story-section .story-copy p {
+    color: var(--st-muted);
+    line-height: 1.8;
+    margin-bottom: 16px;
+  }
+  .story-section .story-points {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .story-section .story-points li {
+    font-size: 13px;
+    color: var(--st-text);
+    padding-left: 16px;
+    position: relative;
+  }
+  .story-section .story-points li::before {
+    content: '·';
+    position: absolute;
+    left: 0;
+    color: var(--st-accent);
+    font-size: 20px;
+    line-height: 1;
+  }
+  .story-visual {
+    border-radius: var(--st-radius);
+    overflow: hidden;
+  }
+  .story-visual .concept-placeholder { width: 100%; aspect-ratio: 4/3; }
+
+  /* Story: manifesto */
+  .story-section.story-manifesto {
+    grid-template-columns: 1fr;
+    text-align: center;
+    padding-block: 80px;
+  }
+  .story-section.story-manifesto .story-copy { max-width: 680px; margin: 0 auto; }
+  .story-section.story-manifesto .story-visual { display: none; }
+
+  /* Story: image-led */
+  .story-section.story-image-led {
+    grid-template-columns: 1.3fr 1fr;
+  }
+  .story-section.story-image-led .story-visual { order: -1; }
+
+  /* ===== CTA ===== */
+  .cta-section {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 32px;
+    background: var(--st-text);
+    color: var(--st-bg);
+    border-radius: var(--st-radius);
+    padding: 48px 40px;
+    margin-top: 32px;
+  }
+  .cta-section .eyebrow {
+    font-family: var(--st-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    color: var(--st-accent);
+    display: block;
+    margin-bottom: 8px;
+  }
+  .cta-section h2 {
+    font-family: var(--st-display);
+    font-size: 24px;
+    margin-bottom: 8px;
+    color: var(--st-bg);
+  }
+  .cta-section p {
+    color: var(--st-muted);
+    font-size: 14px;
+    max-width: 400px;
+  }
+  .cta-button {
+    background: var(--st-accent);
+    color: var(--st-accent-text);
+    padding: 14px 32px;
+    border-radius: var(--st-radius);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 14px;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .cta-muted { color: var(--st-muted); font-size: 13px; }
+
+  /* Minimal CTA variant */
+  .cta-section.variant-minimal-cta {
+    background: transparent;
+    color: var(--st-text);
+    border: 1px solid var(--st-border);
+    text-align: center;
+    flex-direction: column;
+    padding: 48px 32px;
+  }
+  .cta-section.variant-minimal-cta h2 { color: var(--st-text); }
+  .cta-section.variant-minimal-cta p { margin-inline: auto; }
+
+  /* Editorial banner variant */
+  .cta-section.variant-editorial-banner {
+    background: var(--st-accent);
+    color: var(--st-accent-text);
+  }
+  .cta-section.variant-editorial-banner h2,
+  .cta-section.variant-editorial-banner .eyebrow { color: var(--st-accent-text); }
+  .cta-section.variant-editorial-banner p { color: rgba(255,255,255,0.8); }
+  .cta-section.variant-editorial-banner .cta-button {
+    background: var(--st-accent-text);
+    color: var(--st-accent);
+  }
+
+  /* ===== Density ===== */
+  .density-airy .site-section { padding-block: 72px; }
+  .density-balanced .site-section { padding-block: 56px; }
+  .density-dense .site-section { padding-block: 36px; }
+  .density-dense .feature-card { padding: 16px; }
+  .density-dense .hero-section { min-height: 400px; }
+
+  /* ===== Image treatment ===== */
+  .img-full-bleed .hero-visual,
+  .img-full-bleed .story-visual { border-radius: 0; }
+  .img-framed .hero-visual,
+  .img-framed .story-visual {
+    border: 8px solid var(--st-surface);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+    border-radius: var(--st-radius);
+  }
+  .img-minimal .hero-visual { max-width: 360px; }
+  .img-collage .hero-visual { transform: rotate(1deg) scale(1.02); }
+
+  /* ===== Background treatments ===== */
+  .bg-surface { background: var(--st-surface); }
+  .bg-inverted {
+    background: var(--st-text);
+    color: var(--st-bg);
+  }
+  .bg-inverted .section-head h2,
+  .bg-inverted .feature-card h3 { color: var(--st-bg); }
+  .bg-inverted .feature-card p { color: var(--st-muted); }
+  .bg-inverted .feature-card {
+    background: transparent;
+    border-color: rgba(255,255,255,0.1);
+  }
+
+  /* ===== Concept placeholder art ===== */
+  .concept-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--st-surface) 0%, var(--st-border) 100%);
+    position: relative;
+  }
+  .concept-placeholder::after {
+    content: '概念示意 · 非商家实拍';
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 10px;
+    color: var(--st-muted);
+    white-space: nowrap;
+    opacity: 0.8;
+    background: rgba(255,255,255,0.75);
+    padding: 2px 10px;
+    border-radius: 8px;
+  }
+  .concept-placeholder .chair-icon {
+    width: 60%;
+    max-width: 200px;
+    opacity: 0.35;
+  }
+
+  /* ===== Footer ===== */
+  .site-footer {
+    padding: 24px 32px;
+    border-top: 1px solid var(--st-border);
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--st-muted);
+  }
+  .site-footer strong { color: var(--st-text); }
+
+  /* ===== Responsive ===== */
+  @media (max-width: 768px) {
+    .hero-section { grid-template-columns: 1fr !important; min-height: auto; }
+    .hero-section.variant-asymmetric .hero-visual { order: 0; transform: none; }
+    .hero-section.variant-full-bleed .hero-copy { min-height: 400px; padding: 40px 24px; }
+    .gallery-pair { grid-template-columns: 1fr; }
+    .gallery-masonry.gallery-editorial { grid-template-columns: 1fr 1fr; }
+    .gallery-masonry.gallery-editorial .gallery-cell:first-child { grid-column: span 1; grid-row: span 1; }
+    .feature-grid.feature-bento { grid-template-columns: 1fr 1fr; }
+    .feature-grid.feature-bento .feature-card:first-child { grid-column: span 1; grid-row: span 1; }
+    .feature-grid.feature-columns { columns: 1; }
+    .feature-grid.feature-steps { flex-direction: column; gap: 16px; }
+    .story-section { grid-template-columns: 1fr; }
+    .cta-section { flex-direction: column; text-align: center; }
+    .site-nav nav { display: none; }
+  }
+  @media (max-width: 375px) {
+    .site-section { padding: 32px 16px; }
+    .hero-section { padding-block: 32px; }
+    .feature-grid.feature-bento { grid-template-columns: 1fr; }
+  }
+
+  /* ===== Footer of demo page ===== */
+  .demo-footer {
+    text-align: center;
+    padding: 48px 24px 64px;
+    color: #444;
+    font-size: 12px;
+    line-height: 1.8;
+  }
+</style>
+</head>
+<body>
+
+<div class="demo-header">
+  <h1>OneBoss AI 设计引擎 — 三套方向实时对比</h1>
+  <p>同一把高端木椅，AI 独立生成 3 套结构、构图和视觉语言明显不同的设计方案。每套方案有自己的 Design DNA 和 Site Blueprint，由 React 渲染器真实呈现。</p>
+  <span class="badge">基于已确认事实 · 概念占位图 · 非正式成品</span>
+</div>
+<div class="compare-note">
+  对比维度：Hero 构图 · Section 顺序 · Gallery 编排 · Features 布局 · Specs 展示 · 信息密度 · 图片策略 · 色彩系统 · 字体风格
+</div>
+
+<!-- ============================================================ -->
+<!-- DIRECTION A: 家具杂志式 (Editorial) -->
+<!-- ============================================================ -->
+<div class="direction-label">
+  <h2>方案 A · 材质与空间</h2>
+  <p>国际家具杂志式排版。大面积留白、克制字阶，用编辑式构图让木纹和结构成为主角。</p>
+  <div>
+    <span class="dimension-tag">Hero: split-editorial</span>
+    <span class="dimension-tag">Gallery: editorial-grid</span>
+    <span class="dimension-tag">Features: bento</span>
+    <span class="dimension-tag">Specs: technical-table</span>
+    <span class="dimension-tag">density: airy</span>
+    <span class="dimension-tag">image: framed</span>
+    <span class="dimension-tag">serif display</span>
+    <span class="dimension-tag">warm beige palette</span>
+  </div>
+</div>
+
+<div class="site density-airy img-framed" style="--st-bg:#f4f0e6;--st-surface:#fbf8f1;--st-text:#23241e;--st-muted:#6f6a5d;--st-accent:#b4552f;--st-accent-text:#fff8ee;--st-border:#dcd3c1;--st-display:Georgia,'Songti SC',serif;--st-scale:1.0;--st-radius:4px;">
+  <header class="site-nav">
+    <div class="site-brand"><i></i>木作 MOKU</div>
+    <nav>
+      <button>视觉</button>
+      <button>特点</button>
+      <button>信息</button>
+      <a class="nav-cta" href="#">了解更多 →</a>
+    </nav>
+  </header>
+
+  <!-- Hero: split-editorial -->
+  <section class="site-section hero-section variant-split-editorial">
+    <div class="hero-copy">
+      <span class="eyebrow">MOKU · 手作系列</span>
+      <h1>浮光·橡木阅读椅</h1>
+      <p class="hero-sub">选用欧洲白橡木，榫卯结构一体成型。适合阳光充足的阅读角、卧室角落或工作室。每把椅子保留木纹的自然走向。</p>
+      <div class="hero-actions">
+        <button class="site-primary">查看产品资料 →</button>
+        <div class="hero-price">
+          <small>商品宣传价格</small>
+          <strong>¥2,999</strong>
+        </div>
+      </div>
+      <p class="hero-fact">事实版本 V3 · 由 OneBoss 依据已确认资料生成</p>
+    </div>
+    <div class="hero-visual">
+      <div class="concept-placeholder" style="aspect-ratio:5/4;">
+        <svg class="chair-icon" viewBox="0 0 200 160" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="50" y="30" width="100" height="80" rx="8" stroke="#b4552f" stroke-width="2" fill="none"/>
+          <line x1="50" y1="110" x2="50" y2="145" stroke="#b4552f" stroke-width="2"/>
+          <line x1="150" y1="110" x2="150" y2="145" stroke="#b4552f" stroke-width="2"/>
+          <line x1="50" y1="65" x2="150" y2="65" stroke="#b4552f" stroke-width="1" opacity="0.4"/>
+          <circle cx="100" cy="48" r="6" stroke="#b4552f" stroke-width="1" fill="none" opacity="0.4"/>
+        </svg>
+      </div>
+      <span class="art-badge">概念图形 · 非商家实拍</span>
+    </div>
+  </section>
+
+  <!-- Gallery: editorial-grid -->
+  <section class="site-section gallery-section">
+    <div class="section-head"><span>01</span><h2>产品素材</h2></div>
+    <div class="gallery-masonry gallery-editorial">
+      <figure class="gallery-cell">
+        <div class="concept-placeholder" style="aspect-ratio:16/10;">
+          <svg class="chair-icon" viewBox="0 0 200 120" fill="none" stroke="#b4552f" stroke-width="1.5"><rect x="40" y="15" width="120" height="75" rx="6"/><line x1="40" y1="55" x2="160" y2="55" opacity="0.3"/></svg>
+        </div>
+        <figcaption>整体外观 · 客户授权素材</figcaption>
+      </figure>
+      <figure class="gallery-cell">
+        <div class="concept-placeholder" style="aspect-ratio:4/3;">
+          <svg class="chair-icon" viewBox="0 0 160 120" fill="none" stroke="#b4552f" stroke-width="1.5"><circle cx="80" cy="50" r="30"/><line x1="50" y1="85" x2="110" y2="85"/></svg>
+        </div>
+        <figcaption>木纹细节 · 客户授权素材</figcaption>
+      </figure>
+      <figure class="gallery-cell">
+        <div class="concept-placeholder" style="aspect-ratio:4/3;">
+          <svg class="chair-icon" viewBox="0 0 160 120" fill="none" stroke="#b4552f" stroke-width="1.5"><rect x="30" y="20" width="100" height="70" rx="4"/><rect x="50" y="40" width="60" height="35" rx="2" opacity="0.3"/></svg>
+        </div>
+        <figcaption>榫卯细节 · 客户授权素材</figcaption>
+      </figure>
+      <figure class="gallery-cell">
+        <div class="concept-placeholder" style="aspect-ratio:4/3;">
+          <svg class="chair-icon" viewBox="0 0 160 120" fill="none" stroke="#b4552f" stroke-width="1.5"><ellipse cx="80" cy="60" rx="55" ry="35"/><line x1="25" y1="60" x2="135" y2="60" opacity="0.3"/></svg>
+        </div>
+        <figcaption>使用场景 · 客户授权素材</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- Features: bento -->
+  <section class="site-section content-section bg-surface" style="max-width:none;border-radius:0;">
+    <div style="max-width:1100px;margin:0 auto;">
+      <div class="section-head"><span>02</span><h2>已确认的产品重点</h2></div>
+      <div class="feature-grid feature-bento">
+        <article class="feature-card">
+          <span class="feature-index">01</span>
+          <h3>欧洲白橡木</h3>
+          <p>选用欧洲白橡木，纹理自然清晰，经过多道手工打磨处理，保留木材的温润质感和触感。</p>
+        </article>
+        <article class="feature-card">
+          <span class="feature-index">02</span>
+          <h3>榫卯结构</h3>
+          <p>传统榫卯工艺一体成型，无需金属连接件，结构稳固耐用。</p>
+        </article>
+        <article class="feature-card">
+          <span class="feature-index">03</span>
+          <h3>阅读角设计</h3>
+          <p>椅背倾角经过人体工学计算，适合长时间阅读使用。</p>
+        </article>
+        <article class="feature-card">
+          <span class="feature-index">04</span>
+          <h3>手工打磨</h3>
+          <p>表面处理采用天然植物木蜡油，环保无异味。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Specs: technical-table -->
+  <section class="site-section specs-section">
+    <div class="section-head"><span>03</span><h2>产品信息</h2></div>
+    <div class="spec-tabs">
+      <button class="active">已确认资料</button>
+      <button>资料说明</button>
+    </div>
+    <div class="spec-table spec-technical">
+      <div><span>产品名称</span><strong>浮光·橡木阅读椅</strong><small>已确认</small></div>
+      <div><span>品牌</span><strong>木作 MOKU</strong><small>已确认</small></div>
+      <div><span>材质</span><strong>欧洲白橡木</strong><small>已确认</small></div>
+      <div><span>使用场景</span><strong>阅读角、卧室角落、工作室</strong><small>已确认</small></div>
+      <div><span>商品宣传价格</span><strong>¥2,999</strong><small>已确认</small></div>
+      <div><span>产品介绍</span><strong>实木材质，适合阅读角落</strong><small>已确认</small></div>
+    </div>
+  </section>
+
+  <!-- CTA: minimal-cta -->
+  <section class="site-section">
+    <div class="cta-section variant-minimal-cta">
+      <div>
+        <span class="eyebrow">NEXT</span>
+        <h2>了解更多</h2>
+        <p>联系方式以客户确认资料为准。</p>
+      </div>
+      <span class="cta-muted">联系方式待客户确认后展示</span>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <strong>木作 MOKU</strong>
+    <span>产品信息以客户已确认事实为准 · 事实版本 V3</span>
+    <span>未确认信息不会补写</span>
+  </footer>
+</div>
+
+<!-- ============================================================ -->
+<!-- DIRECTION B: 建筑展览式 (Architectural) -->
+<!-- ============================================================ -->
+<div class="direction-label">
+  <h2>方案 B · 结构与秩序</h2>
+  <p>建筑展览式视觉语言。深色基底、网格秩序、等宽标签，把结构和参数推到前景。</p>
+  <div>
+    <span class="dimension-tag">Hero: full-bleed</span>
+    <span class="dimension-tag">Gallery: horizontal-strip</span>
+    <span class="dimension-tag">Features: numbered-list</span>
+    <span class="dimension-tag">Specs: accordion</span>
+    <span class="dimension-tag">density: balanced</span>
+    <span class="dimension-tag">image: full-bleed</span>
+    <span class="dimension-tag">mono display</span>
+    <span class="dimension-tag">dark grid palette</span>
+  </div>
+</div>
+
+<div class="site density-balanced img-full-bleed" style="--st-bg:#0c1412;--st-surface:#132220;--st-text:#eaf7f2;--st-muted:#8dab9f;--st-accent:#57f0bd;--st-accent-text:#04211a;--st-border:#1e332d;--st-display:'Cascadia Mono','JetBrains Mono',ui-monospace,monospace;--st-scale:1.02;--st-radius:2px;">
+  <header class="site-nav">
+    <div class="site-brand"><i></i>MOKU / 浮光</div>
+    <nav>
+      <button>视觉</button>
+      <button>信息</button>
+      <button>品牌</button>
+      <a class="nav-cta" href="#">了解更多 →</a>
+    </nav>
+  </header>
+
+  <!-- Hero: full-bleed -->
+  <section class="hero-section variant-full-bleed" style="padding:0;min-height:600px;">
+    <div class="hero-visual" style="position:absolute;inset:0;z-index:0;">
+      <div class="concept-placeholder" style="width:100%;height:100%;">
+        <svg class="chair-icon" viewBox="0 0 400 300" fill="none" stroke="#57f0bd" stroke-width="1" opacity="0.3">
+          <rect x="120" y="50" width="160" height="160" rx="8"/>
+          <line x1="120" y1="130" x2="280" y2="130" opacity="0.3"/>
+          <line x1="120" y1="210" x2="120" y2="260"/>
+          <line x1="280" y1="210" x2="280" y2="260"/>
+          <line x1="60" y1="150" x2="120" y2="150" opacity="0.2"/>
+          <line x1="280" y1="150" x2="340" y2="150" opacity="0.2"/>
+        </svg>
+      </div>
+    </div>
+    <div class="hero-copy" style="position:relative;z-index:1;background:linear-gradient(135deg,rgba(0,0,0,0.75) 0%,rgba(0,0,0,0.2) 100%);padding:80px 48px;display:flex;flex-direction:column;justify-content:flex-end;min-height:600px;">
+      <span class="eyebrow" style="color:#57f0bd;">MOKU · MATERIAL STUDY · 2026</span>
+      <h1 style="font-family:'Cascadia Mono',monospace;">浮光<br>橡木阅读椅</h1>
+      <p class="hero-sub" style="color:rgba(234,247,242,0.75);max-width:520px;">欧洲白橡木，榫卯一体。木材天然纹理。为阅读角设计的人体工学倾角。</p>
+      <div class="hero-actions">
+        <button class="site-primary" style="border-radius:2px;font-family:monospace;">查看产品资料 →</button>
+        <div class="hero-price">
+          <small style="color:rgba(234,247,242,0.5);">商品宣传价格</small>
+          <strong style="color:#eaf7f2;font-family:monospace;">¥2,999</strong>
+        </div>
+      </div>
+      <p class="hero-fact" style="color:rgba(234,247,242,0.4);">事实版本 V3 · 由 OneBoss 依据已确认资料生成</p>
+    </div>
+  </section>
+
+  <!-- Specs: accordion (放在前面！) -->
+  <section class="site-section specs-section">
+    <div class="section-head"><span>01</span><h2>参数 / PARAMETERS</h2></div>
+    <div class="spec-accordion">
+      <details open>
+        <summary>产品信息 / PRODUCT</summary>
+        <div class="spec-table">
+          <div><span>产品名称</span><strong>浮光·橡木阅读椅</strong><small>已确认</small></div>
+          <div><span>品牌</span><strong>木作 MOKU</strong><small>已确认</small></div>
+          <div><span>材质</span><strong>欧洲白橡木</strong><small>已确认</small></div>
+        </div>
+      </details>
+      <details>
+        <summary>使用与场景 / USE</summary>
+        <div class="spec-table">
+          <div><span>使用场景</span><strong>阅读角、卧室角落、工作室</strong><small>已确认</small></div>
+          <div><span>商品宣传价格</span><strong>¥2,999</strong><small>已确认</small></div>
+        </div>
+      </details>
+      <details>
+        <summary>资料说明 / SOURCE</summary>
+        <div class="spec-table">
+          <div><span>信息来源</span><strong>客户确认资料，未确认信息不作宣传</strong><small>已确认</small></div>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- Gallery: horizontal-strip -->
+  <section class="site-section gallery-section">
+    <div class="section-head"><span>02</span><h2>视觉 / VISUAL</h2></div>
+    <div class="gallery-strip">
+      <figure class="gallery-strip-item">
+        <div class="concept-placeholder" style="aspect-ratio:3/4;">
+          <svg class="chair-icon" viewBox="0 0 120 160" fill="none" stroke="#57f0bd" stroke-width="1.2"><rect x="25" y="20" width="70" height="100" rx="6"/><line x1="25" y1="120" x2="25" y2="148"/><line x1="95" y1="120" x2="95" y2="148"/></svg>
+        </div>
+        <figcaption style="color:#8dab9f;">正视图</figcaption>
+      </figure>
+      <figure class="gallery-strip-item">
+        <div class="concept-placeholder" style="aspect-ratio:3/4;">
+          <svg class="chair-icon" viewBox="0 0 120 160" fill="none" stroke="#57f0bd" stroke-width="1.2"><rect x="20" y="30" width="80" height="90" rx="4"/><line x1="40" y1="30" x2="40" y2="120" opacity="0.3"/><line x1="80" y1="30" x2="80" y2="120" opacity="0.3"/></svg>
+        </div>
+        <figcaption style="color:#8dab9f;">侧视图</figcaption>
+      </figure>
+      <figure class="gallery-strip-item">
+        <div class="concept-placeholder" style="aspect-ratio:3/4;">
+          <svg class="chair-icon" viewBox="0 0 120 160" fill="none" stroke="#57f0bd" stroke-width="1.2"><circle cx="60" cy="55" r="28"/><rect x="35" y="85" width="50" height="45" rx="3"/></svg>
+        </div>
+        <figcaption style="color:#8dab9f;">结构节点</figcaption>
+      </figure>
+      <figure class="gallery-strip-item">
+        <div class="concept-placeholder" style="aspect-ratio:3/4;">
+          <svg class="chair-icon" viewBox="0 0 120 160" fill="none" stroke="#57f0bd" stroke-width="1.2"><ellipse cx="60" cy="70" rx="42" ry="55"/><line x1="18" y1="70" x2="102" y2="70" opacity="0.2"/></svg>
+        </div>
+        <figcaption style="color:#8dab9f;">使用场景</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- Features: numbered-list -->
+  <section class="site-section content-section">
+    <div class="section-head"><span>03</span><h2>特征 / FEATURES</h2></div>
+    <div class="feature-grid feature-list">
+      <article class="feature-card" style="background:transparent;border-color:#1e332d;">
+        <span class="feature-index" style="font-size:20px;color:#57f0bd;">01</span>
+        <h3 style="color:#eaf7f2;">欧洲白橡木</h3>
+        <p style="color:#8dab9f;">选用欧洲白橡木，纹理自然清晰，经过多道手工打磨处理，保留木材的温润质感和触感。</p>
+      </article>
+      <article class="feature-card" style="background:transparent;border-color:#1e332d;">
+        <span class="feature-index" style="font-size:20px;color:#57f0bd;">02</span>
+        <h3 style="color:#eaf7f2;">榫卯结构</h3>
+        <p style="color:#8dab9f;">传统榫卯工艺一体成型，无需金属连接件，结构稳固耐用。</p>
+      </article>
+      <article class="feature-card" style="background:transparent;border-color:#1e332d;">
+        <span class="feature-index" style="font-size:20px;color:#57f0bd;">03</span>
+        <h3 style="color:#eaf7f2;">人体工学倾角</h3>
+        <p style="color:#8dab9f;">椅背倾角经过人体工学计算，适合长时间阅读使用。</p>
+      </article>
+      <article class="feature-card" style="background:transparent;border-color:#1e332d;">
+        <span class="feature-index" style="font-size:20px;color:#57f0bd;">04</span>
+        <h3 style="color:#eaf7f2;">天然木蜡油</h3>
+        <p style="color:#8dab9f;">表面处理采用天然植物木蜡油，环保无异味。</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- Story: manifesto -->
+  <section class="site-section story-section story-manifesto">
+    <div class="story-copy">
+      <div class="section-head" style="justify-content:center;"><span>04</span><h2>品牌 / BRAND</h2></div>
+      <p style="color:#8dab9f;">木作 MOKU。我们相信家具不仅是功能性物件，更是承载时间和记忆的空间元素。</p>
+      <ul class="story-points" style="display:inline-flex;text-align:left;margin-top:12px;">
+        <li style="color:#eaf7f2;">榫卯一体 · 无金属连接</li>
+        <li style="color:#eaf7f2;">欧洲白橡木 · 天然纹理</li>
+        <li style="color:#eaf7f2;">手工打磨 · 环保木蜡油</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- CTA: editorial-banner -->
+  <section class="site-section">
+    <div class="cta-section variant-editorial-banner" style="background:#57f0bd;border-radius:2px;">
+      <div>
+        <span class="eyebrow" style="color:#04211a;">NEXT</span>
+        <h2 style="color:#04211a;font-family:monospace;">了解更多 / LEARN MORE</h2>
+        <p style="color:rgba(4,33,26,0.7);">联系方式以客户确认资料为准。</p>
+      </div>
+      <a class="cta-button" href="#" style="background:#04211a;color:#57f0bd;border-radius:2px;font-family:monospace;">联系商家 ↗</a>
+    </div>
+  </section>
+
+  <footer class="site-footer" style="border-color:#1e332d;">
+    <strong style="color:#eaf7f2;">MOKU / 浮光</strong>
+    <span style="color:#8dab9f;">产品信息以客户已确认事实为准 · 事实版本 V3</span>
+    <span style="color:#8dab9f;">未确认信息不会补写</span>
+  </footer>
+</div>
+
+<!-- ============================================================ -->
+<!-- DIRECTION C: 年轻生活方式式 (Lifestyle) -->
+<!-- ============================================================ -->
+<div class="direction-label">
+  <h2>方案 C · 日常仪式感</h2>
+  <p>年轻生活方式式节奏。高对比色块、超大标题、不对称排版，把椅子放进生活场景。</p>
+  <div>
+    <span class="dimension-tag">Hero: asymmetric</span>
+    <span class="dimension-tag">Gallery: featured-pair</span>
+    <span class="dimension-tag">Features: editorial-columns</span>
+    <span class="dimension-tag">Specs: spec-cards</span>
+    <span class="dimension-tag">density: dense</span>
+    <span class="dimension-tag">image: collage</span>
+    <span class="dimension-tag">black display</span>
+    <span class="dimension-tag">bold palette</span>
+  </div>
+</div>
+
+<div class="site density-dense img-collage" style="--st-bg:#fff8ec;--st-surface:#fff;--st-text:#111;--st-muted:#666;--st-accent:#ff4d2a;--st-accent-text:#fff;--st-border:#111;--st-display:'Arial Black','Microsoft YaHei',sans-serif;--st-scale:1.06;--st-radius:18px;">
+  <header class="site-nav">
+    <div class="site-brand"><i></i>MOKU!</div>
+    <nav>
+      <button>看图</button>
+      <button>亮点</button>
+      <button>参数</button>
+      <a class="nav-cta" href="#" style="border-radius:20px;">立即了解 →</a>
+    </nav>
+  </header>
+
+  <!-- Hero: asymmetric -->
+  <section class="hero-section variant-asymmetric" style="padding-block:40px;min-height:480px;">
+    <div class="hero-visual" style="order:-1;transform:rotate(-2deg) scale(1.02);">
+      <div class="concept-placeholder" style="aspect-ratio:4/3;">
+        <svg class="chair-icon" viewBox="0 0 200 150" fill="none" stroke="#ff4d2a" stroke-width="2">
+          <rect x="55" y="25" width="90" height="80" rx="12" stroke="#111"/>
+          <line x1="55" y1="105" x2="55" y2="138" stroke="#111" stroke-width="3"/>
+          <line x1="145" y1="105" x2="145" y2="138" stroke="#111" stroke-width="3"/>
+          <circle cx="100" cy="55" r="10" fill="#ff4d2a" stroke="none" opacity="0.6"/>
+        </svg>
+      </div>
+    </div>
+    <div class="hero-copy">
+      <span class="eyebrow" style="color:#ff4d2a;">MOKU · DAILY RITUAL</span>
+      <h1 style="font-family:'Arial Black',sans-serif;font-size:clamp(2.5rem,6vw,4.5rem);line-height:0.92;letter-spacing:-0.02em;">坐下来<br>读一本<br>好书</h1>
+      <p class="hero-sub" style="font-size:16px;">浮光·橡木阅读椅。用一把好椅子，给日常留一个阅读角落。</p>
+      <div class="hero-actions">
+        <button class="site-primary" style="border-radius:24px;font-size:16px;padding:16px 32px;">了解详情 →</button>
+        <div class="hero-price">
+          <small>到手价</small>
+          <strong style="font-family:'Arial Black',sans-serif;font-size:28px;">¥2,999</strong>
+        </div>
+      </div>
+      <p class="hero-fact">事实版本 V3 · 由 OneBoss 依据已确认资料生成</p>
+    </div>
+  </section>
+
+  <!-- Features: editorial-columns -->
+  <section class="site-section content-section">
+    <div class="section-head"><span>01</span><h2 style="font-family:'Arial Black',sans-serif;">为什么选它</h2></div>
+    <div class="feature-grid feature-columns">
+      <article class="feature-card" style="border-top-color:#ff4d2a;background:transparent;padding:20px 0 0;">
+        <span class="feature-index" style="color:#ff4d2a;">01</span>
+        <h3>欧洲白橡木</h3>
+        <p>选用欧洲白橡木，纹理自然清晰，经过多道手工打磨处理，保留木材的温润质感和触感。</p>
+      </article>
+      <article class="feature-card" style="border-top-color:#ff4d2a;background:transparent;padding:20px 0 0;">
+        <span class="feature-index" style="color:#ff4d2a;">02</span>
+        <h3>榫卯结构</h3>
+        <p>传统榫卯工艺一体成型，无需金属连接件，结构稳固耐用。</p>
+      </article>
+      <article class="feature-card" style="border-top-color:#ff4d2a;background:transparent;padding:20px 0 0;">
+        <span class="feature-index" style="color:#ff4d2a;">03</span>
+        <h3>阅读角设计</h3>
+        <p>椅背倾角经过人体工学计算，适合长时间阅读使用。</p>
+      </article>
+      <article class="feature-card" style="border-top-color:#ff4d2a;background:transparent;padding:20px 0 0;">
+        <span class="feature-index" style="color:#ff4d2a;">04</span>
+        <h3>手工木蜡油</h3>
+        <p>表面处理采用天然植物木蜡油，环保无异味。</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- Gallery: featured-pair -->
+  <section class="site-section gallery-section">
+    <div class="section-head"><span>02</span><h2 style="font-family:'Arial Black',sans-serif;">看图</h2></div>
+    <div class="gallery-pair">
+      <figure class="gallery-pair-main">
+        <div class="concept-placeholder" style="aspect-ratio:16/10;">
+          <svg class="chair-icon" viewBox="0 0 300 180" fill="none" stroke="#ff4d2a" stroke-width="1.5">
+            <rect x="80" y="25" width="140" height="110" rx="12" stroke="#111" stroke-width="2"/>
+            <line x1="80" y1="135" x2="80" y2="168" stroke="#111" stroke-width="3"/>
+            <line x1="220" y1="135" x2="220" y2="168" stroke="#111" stroke-width="3"/>
+          </svg>
+        </div>
+        <figcaption style="padding:12px 16px;font-size:13px;color:#666;">放在你的阅读角 · 概念示意</figcaption>
+      </figure>
+      <figure class="gallery-pair-side">
+        <div class="concept-placeholder" style="aspect-ratio:3/4;">
+          <svg class="chair-icon" viewBox="0 0 150 200" fill="none" stroke="#ff4d2a" stroke-width="1.5">
+            <rect x="35" y="30" width="80" height="120" rx="10" stroke="#111" stroke-width="2"/>
+            <line x1="35" y1="150" x2="35" y2="185" stroke="#111" stroke-width="3"/>
+            <line x1="115" y1="150" x2="115" y2="185" stroke="#111" stroke-width="3"/>
+            <circle cx="75" cy="75" r="12" fill="#ff4d2a" stroke="none" opacity="0.5"/>
+          </svg>
+        </div>
+        <figcaption style="padding:12px 16px;font-size:13px;color:#666;">木纹细节 · 概念示意</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- Specs: spec-cards -->
+  <section class="site-section specs-section bg-surface" style="max-width:none;border-radius:0;">
+    <div style="max-width:1100px;margin:0 auto;">
+      <div class="section-head"><span>03</span><h2 style="font-family:'Arial Black',sans-serif;">参数</h2></div>
+      <div class="spec-cards">
+        <div class="spec-card" style="border-color:#111;">
+          <small>产品名称</small>
+          <strong>浮光·橡木阅读椅</strong>
+        </div>
+        <div class="spec-card" style="border-color:#111;">
+          <small>品牌</small>
+          <strong>木作 MOKU</strong>
+        </div>
+        <div class="spec-card" style="border-color:#111;">
+          <small>材质</small>
+          <strong>欧洲白橡木</strong>
+        </div>
+        <div class="spec-card" style="border-color:#111;">
+          <small>使用场景</small>
+          <strong style="font-size:14px;">阅读角、卧室角落、工作室</strong>
+        </div>
+        <div class="spec-card" style="border-color:#111;">
+          <small>商品宣传价格</small>
+          <strong>¥2,999</strong>
+        </div>
+        <div class="spec-card" style="border-color:#111;">
+          <small>产品介绍</small>
+          <strong style="font-size:13px;font-weight:400;">实木材质，适合阅读角落</strong>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA: default -->
+  <section class="site-section">
+    <div class="cta-section" style="background:#111;border-radius:18px;">
+      <div>
+        <span class="eyebrow">NEXT</span>
+        <h2 style="font-family:'Arial Black',sans-serif;">想要同款？</h2>
+        <p>联系方式以客户确认资料为准。</p>
+      </div>
+      <a class="cta-button" href="#" style="border-radius:24px;font-size:16px;padding:16px 32px;background:#ff4d2a;color:#fff;">联系商家 ↗</a>
+    </div>
+  </section>
+
+  <footer class="site-footer" style="border-color:#111;">
+    <strong style="color:#111;">MOKU!</strong>
+    <span>产品信息以客户已确认事实为准 · 事实版本 V3</span>
+    <span>未确认信息不会补写</span>
+  </footer>
+</div>
+
+<div class="demo-footer">
+  OneBoss AI 个性化视觉设计引擎 · Design DNA + Site Blueprint + 受控 React Renderer<br>
+  同一商品，三种真实不同的页面构图 · 客户比较选择 · 批准后 Production 沿用同一设计<br>
+  概念占位图 · 已确认事实版本 V3 · 非正式成品
+</div>
+
+</body>
+</html>

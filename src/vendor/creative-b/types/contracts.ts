@@ -232,6 +232,29 @@ export const sectionSchema = z.discriminatedUnion('type', [
     }),
   }),
   z.object({
+    type: z.literal('product-3d'),
+    id: z.string().min(1),
+    layout: sectionLayoutSchema,
+    props: z.object({
+      title: z.string(),
+      description: z.string(),
+      /** Trust level: appearance_3d | conceptual_exploded | verified_exploded | static_fallback */
+      modelTrust: z.enum(['appearance_3d', 'conceptual_exploded', 'verified_exploded', 'static_fallback']),
+      /** Variant: full-width-stage | split-annotation | immersive-section */
+      variant3d: z.enum(['full-width-stage', 'split-annotation', 'immersive-section']).optional(),
+      /** Part labels for exploded view (labels only, no external URLs) */
+      parts: z
+        .array(
+          z.object({
+            id: z.string().min(1),
+            label: z.string().min(1),
+            description: z.string().optional(),
+          }),
+        )
+        .optional(),
+    }),
+  }),
+  z.object({
     type: z.literal('cta'),
     id: z.string().min(1),
     layout: sectionLayoutSchema,

@@ -340,6 +340,16 @@ function SectionView({
         </section>
       );
     }
+    case 'product-3d':
+      return (
+        <Product3DSection
+          key={section.id}
+          section={section}
+          order={order}
+          lc={lc}
+          design={design}
+        />
+      );
     default:
       return null;
   }
@@ -680,6 +690,106 @@ function Products({
           />
         </div>
       </div>
+    </section>
+  );
+}
+
+function Product3DSection({
+  section,
+  order,
+  lc,
+  design,
+}: {
+  section: Extract<SiteSection, { type: 'product-3d' }>;
+  order: string;
+  lc?: string;
+  design: DesignSystem;
+}) {
+  const [LazyViewer, setLazyViewer] = useState<React.ComponentType<Record<string, any>> | null>(null);
+  const [loadError, setLoadError] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    import('../../../../components/creative/three-d-viewer')
+      .then((mod) => {
+        if (live) setLazyViewer(() => mod.LazyProductViewer);
+      })
+      .catch(() => {
+        if (live) setLoadError(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const trustLabel =
+    section.props.modelTrust === 'verified_exploded'
+      ? 'verified_exploded · 真实分件拆解'
+      : section.props.modelTrust === 'conceptual_exploded'
+        ? 'conceptual_exploded · 概念结构示意 · 非商家实拍'
+        : section.props.modelTrust === 'appearance_3d'
+          ? 'appearance_3d · 外观展示 · 3D 旋转'
+          : 'static_fallback · 概念示意';
+
+  return (
+    <section className={`site-section product-3d-section ${lc}`}>
+      <SectionHead order={order} title={section.props.title} />
+      <p style={{ color: 'var(--st-muted)', maxWidth: 680, marginBottom: 24, lineHeight: 1.7 }}>
+        {section.props.description}
+      </p>
+      {loadError ? (
+        <div
+          style={{
+            padding: 32,
+            background: 'var(--st-surface)',
+            borderRadius: 12,
+            textAlign: 'center',
+            border: '1px solid var(--st-border)',
+          }}
+        >
+          <p style={{ color: 'var(--st-muted)', fontSize: 14 }}>
+            3D 内容暂时无法加载，以下为概念结构示意。
+          </p>
+          <p style={{ color: 'var(--st-muted)', fontSize: 12, marginTop: 8 }}>{trustLabel}</p>
+        </div>
+      ) : LazyViewer ? (
+        <LazyViewer
+          variant={section.props.variant3d ?? 'full-width-stage'}
+          palette={{
+            accent: design.palette.accent,
+            surface: design.palette.surface,
+            text: design.palette.text,
+          }}
+          trustLabel={trustLabel}
+          height={440}
+        />
+      ) : (
+        <div
+          style={{
+            height: 440,
+            background: 'var(--st-surface)',
+            borderRadius: 12,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'var(--st-muted)',
+          }}
+        >
+          3D 内容加载中…
+        </div>
+      )}
+      <p
+        style={{
+          marginTop: 12,
+          fontSize: 11,
+          color: 'var(--st-muted)',
+          opacity: 0.7,
+        }}
+      >
+        {section.props.modelTrust === 'verified_exploded'
+          ? '真实分件模型，拆解为工程验证结构。'
+          : '概念结构示意，拆解为 AI 概念展示，非商家实拍。'}
+      </p>
     </section>
   );
 }
