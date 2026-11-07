@@ -5,6 +5,16 @@ import {requestCustomerJSON} from '../../lib/customer/request';
 
 let client: SupabaseClient | undefined;
 let publicConfig: { url?: string; key?: string; emailReady?: boolean } | undefined;
+/**
+ * 允许服务端布局在运行时注入配置，而不是依赖构建期的 NEXT_PUBLIC_ 内联。
+ * 管理员平台用它：Docker 构建阶段拿不到 env 时，页面仍然能初始化 Supabase。
+ */
+export function setAuthConfig(config: { url?: string; key?: string }) {
+  const changed =
+    !publicConfig || publicConfig.url !== config.url || publicConfig.key !== config.key;
+  publicConfig = { ...publicConfig, ...config };
+  if (changed) client = undefined;
+}
 export const publicAuthUrl = () =>
   publicConfig ? publicConfig.url : process.env.NEXT_PUBLIC_SUPABASE_URL;
 export function browserAuth() {
