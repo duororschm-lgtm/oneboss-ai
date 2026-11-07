@@ -81,3 +81,9 @@ PNG 单元测试实际创建1080×1350测试图并嵌入 QR，使用独立解码
 新增 Dockerfile、Render Free Web Service 蓝图和双进程启动器。44项单元测试、21项数据库集成测试通过；Docker内生产构建通过。以node非root用户运行真实镜像，验证套餐查询、未登录请求拒绝及worker存活；未嵌入.env或临时构建CA。意外终止worker会停止HTTP服务并退出1，正常平台停止则退出0。
 
 数据库支持单独的原始DATABASE_PASSWORD，避免手机手动URL编码；远程TLS强制验证，URL参数不能降低证书验证。Docker仅在本地测试数据库上运行，Render账号/服务尚未创建，托管Postgres原生TLS握手仍未实测，不能称为已经部署上线。
+
+### Render 已上线与 A 独立验收补充（2026-11-07）
+
+更新上述历史状态：用户已创建 Render `oneboss-ai`，部署33b0b7b。首次运行出现SELF_SIGNED_CERT_IN_CHAIN，补充Supabase Root 2021 CA到DATABASE_CA_CERT后重新部署。用户提供的 `/api/core/plans` 成功响应确认应用已通过原生连接读出托管套餐与增项，`/api/health` 的配置标记不再作为唯一证据。
+
+新增 `scripts/acceptance-a.ts`，真实Supabase临时用户密码登录 + 本地Next生产HTTP + 独立worker + 真实MiMo + 一次性PostgreSQL业务库验收通过，无Auth/模型mock。修复角色历史输出字段对严格Schema的干扰后，任务e2829a9b-0d3d-4f16-b6fe-0466f75bdfed首轮成功，usage.total_tokens=2061，结果持久化；临时Auth用户2个全部删除。没有对生产业务库付款、写订单或改管理员权限。具体检查和仍需Render/B联调的边界见 A_ACCEPTANCE.md。

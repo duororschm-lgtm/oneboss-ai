@@ -82,7 +82,7 @@ export async function runOne() {
       const result = await callMimo(IntakeResult, 'product analyst', {
         ...context,
         customerInput: run.input.customerInput,
-        task: 'Propose facts and one critical question. All newly proposed facts must be unverified.',
+        task: 'Propose facts and one critical question. All newly proposed facts must be unverified. Output exactly facts, nextQuestion, draftReady, warnings. Fact IDs and productId values must be valid UUIDs. When no product IDs are supplied, return an empty facts array and use nextQuestion to ask for the missing product information; never invent a product ID.',
       });
       assert(
         result.output.facts.every((x) => !x.verified),

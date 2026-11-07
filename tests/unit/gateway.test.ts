@@ -35,6 +35,8 @@ it('uses official api-key header and validates JSON before returning', async () 
   const body = JSON.parse(options!.body as string);
   expect(body.response_format.type).toBe('json_object');
   expect(body.messages[0].content).toContain('untrusted data');
+  expect(body.messages[0].content).toContain('AUTHORITATIVE OUTPUT CONTRACT');
+  expect(body.messages[0].content).toContain('omit every legacy field absent from it');
 });
 it.each(['not json', '{"ok":false}', '{"ok":true,"extra":"unsafe"}'])(
   'rejects malformed or out-of-schema content: %s',
@@ -50,6 +52,27 @@ it.each(['not json', '{"ok":false}', '{"ok":true,"extra":"unsafe"}'])(
 it('redacts remote error bodies', async () => {
   mock.mockResolvedValue(new Response('sensitive remote error', { status: 401 }) as never);
   await expect(callMimo(schema, 'test', {})).rejects.toThrow('MIMO_HTTP_401');
+});
+it('schema diagnostics contain issue codes without model values or extra field contents', async () => {
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    mock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: '{"ok":false,"legacy":"private-customer-input"}' } }],
+        }),
+      ) as never,
+    );
+    await expect(callMimo(schema, 'test', {})).rejects.toThrow('MIMO_SCHEMA_INVALID');
+    const diagnostic = JSON.parse(log.mock.calls[0][0]);
+    expect(diagnostic).toEqual({
+      errorClass: 'MIMO_SCHEMA_INVALID',
+      issueCodes: ['invalid_value', 'unrecognized_keys'],
+    });
+    expect(JSON.stringify(log.mock.calls)).not.toContain('private-customer-input');
+  } finally {
+    log.mockRestore();
+  }
 });
 it('rejects user-controlled endpoints without a request', async () => {
   vi.stubEnv('MIMO_BASE_URL', 'https://attacker.example/v1');
@@ -74,6 +97,7 @@ it('requests native function calling without conflicting JSON output mode', asyn
   expect(result.output.toolCalls).toEqual([native]);
   const body = JSON.parse(mock.mock.calls[0][1]!.body as string);
   expect(body).not.toHaveProperty('response_format');
+  expect(body.messages[0].content).not.toContain('Use ONLY the exact JSON schema');
   expect(body.tool_choice.function.name).toBe('read_project_facts');
 });
 it('rejects JSON text pretending to be a native tool call', async () => {
