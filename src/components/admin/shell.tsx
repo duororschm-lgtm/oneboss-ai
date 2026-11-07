@@ -18,7 +18,7 @@ import { browserAuth } from '../customer/session';
 import { fetchWorkspace, MOCK_MODE, type AdminResult } from '../../lib/admin/api';
 import type { AdminWorkspacePayload } from '../../lib/admin/types';
 import { ROLE_LABEL, resolveRole } from '../../lib/admin/permissions';
-import { ForbiddenState, MockBanner, SkeletonRows } from './states';
+import { ErrorState, ForbiddenState, MockBanner, SkeletonRows } from './states';
 
 interface AdminContextValue {
   email: string | null;
@@ -46,7 +46,12 @@ const NAV = [
   { href: '/admin/audit-logs', label: '审计日志', icon: ScrollText },
 ];
 
-type Phase = 'checking' | 'ready' | 'forbidden' | 'anonymous';
+type Phase = 'checking' | 'ready' | 'forbidden' | 'anonymous' | 'failed';
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** 权限探测超时：避免一次请求挂住就把整页卡在骨架屏。 */
+const PROBE_TIMEOUT_MS = 12_000;
 
 export function AdminShell({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -56,23 +61,41 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const [workspace, setWorkspace] = useState<AdminResult<AdminWorkspacePayload> | null>(null);
 
   const load = useCallback(async () => {
-    try {
-      const { data } = await browserAuth().auth.getSession();
-      if (!data.session) {
-        setPhase('anonymous');
-        router.replace('/admin/login');
-        return;
+    setPhase('checking');
+    // 刚登录完成时，第一次带的 token 可能还没就绪（401），或请求超时；
+    // 这类瞬时失败不能直接判定成「无权限」，否则要手动刷新才能恢复。
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (attempt > 0) await sleep(400 * attempt);
+      try {
+        const { data } = await browserAuth().auth.getSession();
+        const session = data.session ?? (await browserAuth().auth.refreshSession()).data.session;
+        if (!session) {
+          setPhase('anonymous');
+          router.replace('/admin/login');
+          return;
+        }
+        setEmail(session.user.email ?? null);
+        const result = await Promise.race([
+          fetchWorkspace(),
+          new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('PROBE_TIMEOUT')), PROBE_TIMEOUT_MS);
+          }),
+        ]);
+        setWorkspace(result);
+        if (result.ok) {
+          setPhase('ready');
+          return;
+        }
+        if (result.kind === 'forbidden') {
+          setPhase('forbidden');
+          return;
+        }
+        // unauthorized / unsupported / error 都允许重试一轮再下结论。
+      } catch {
+        /* 超时或网络异常：继续重试 */
       }
-      setEmail(data.session.user.email ?? null);
-      const result = await fetchWorkspace();
-      setWorkspace(result);
-      if (result.ok) setPhase('ready');
-      else if (result.kind === 'forbidden' || result.kind === 'unauthorized') setPhase('forbidden');
-      else setPhase('ready');
-    } catch {
-      setPhase('anonymous');
-      router.replace('/admin/login');
     }
+    setPhase('failed');
   }, [router]);
 
   useEffect(() => {
@@ -149,8 +172,11 @@ export function AdminShell({ children }: { children: ReactNode }) {
             <h1>{current?.label ?? '管理员平台'}</h1>
             <span className="ad-crumb">/admin</span>
             <div className="ad-header-right">
-              <span className="ad-badge" data-tone={phase === 'forbidden' ? 'danger' : 'info'}>
-                {phase === 'forbidden' ? ROLE_LABEL.unknown : ROLE_LABEL[role]}
+              <span
+                className="ad-badge"
+                data-tone={phase === 'forbidden' || phase === 'failed' ? 'danger' : 'info'}
+              >
+                {phase === 'ready' ? ROLE_LABEL[role] : phase === 'checking' ? '校验中' : '未知'}
               </span>
               <span title={email ?? ''}>{email ?? '—'}</span>
               <span className="ad-avatar" aria-hidden>
@@ -182,6 +208,11 @@ export function AdminShell({ children }: { children: ReactNode }) {
                     ? workspace.message
                     : undefined
                 }
+              />
+            ) : phase === 'failed' ? (
+              <ErrorState
+                message="连续三次都无法完成管理员权限校验，可能是网络或认证服务波动。"
+                onRetry={() => void load()}
               />
             ) : (
               children
