@@ -17,7 +17,7 @@ import { projectSeedSchema, type ProjectSeed } from '../src/vendor/creative-b/ty
 
 const INPUT = path.join('docs', 'B02-creative-output.json');
 const OUT = path.join('.cache', 'mimo-b02');
-const QR_URL = 'https://oneboss-ai.onrender.com/p/demo-poster';
+const QR_URL = `${process.env.APP_URL || 'https://oneboss-ai.onrender.com'}/p/demo-poster`;
 
 const seed: ProjectSeed = projectSeedSchema.parse({
   id: 'demo-lanye',

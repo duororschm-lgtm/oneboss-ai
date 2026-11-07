@@ -23,7 +23,7 @@ import {
 import { projectSeedSchema, type ProjectSeed } from '../src/vendor/creative-b/types/contracts';
 
 const OUT = path.join('.cache', 'poster-local');
-const PUBLIC_URL = 'https://oneboss-ai.onrender.com/p/demo-poster';
+const PUBLIC_URL = `${process.env.APP_URL || 'https://oneboss-ai.onrender.com'}/p/demo-poster`;
 
 /**
  * 虚构演示数据，仅用于本机版式验收。不是真实客户资料，也不代表任何真实商品。

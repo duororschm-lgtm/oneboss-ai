@@ -170,3 +170,78 @@ git pull --ff-only
 | 自动部署 | 手动（`autoDeployTrigger: off`） | 需手动 `git pull` + 重启 或 发布版本 |
 | 域名 | `oneboss-ai.onrender.com` | 待定 |
 | 成本 | 免费 | 按 Sealos 计费 |
+
+---
+
+## 十、域名切换清单
+
+目标：把对外域名从 `oneboss-ai.onrender.com` 换成新的 HTTPS 域名（Sealos 或自定义域名）。
+
+### 10.1 代码侧：已经改成一处配置
+
+原来 7 个脚本里硬编码了这个域名，现在全部改成读 `APP_URL`，只保留旧域名作为兜底默认值：
+
+```ts
+const origin = (process.env.APP_URL || 'https://oneboss-ai.onrender.com');
+```
+
+涉及：`public-demo.ts`、`acceptance-hosted.ts`、`acceptance-hosted-write.ts`、
+`acceptance-registration.ts`、`acceptance-hosted-customer-flow.ts`、
+`acceptance-poster-local.ts`、`render-mimo-b02.ts`。
+
+**服务端本来就用 `APP_URL`**（`src/lib/security/network.ts: appOrigin()`），所以应用代码不需要改。
+
+### 10.2 新域名必须满足的条件（不然发布直接失败）
+
+`appOrigin()` 会断言：
+
+| 要求 | 不满足时的错误码 |
+| --- | --- |
+| 必须是 `https://` | `HTTPS_ORIGIN_REQUIRED` |
+| 不能带路径 / 查询串 | `HTTPS_ORIGIN_REQUIRED` |
+| 不能是 IP、`localhost`、`*.local` | `PUBLIC_HOST_REQUIRED` |
+| 必须配置 | `APP_URL_NOT_CONFIGURED` |
+
+所以 `.env.local` 里 **`APP_URL=http://127.0.0.1:3000` 是不行的**，
+必须是 `https://xxx.sealos.run` 这种。本地调试跑发布流程时也一样。
+
+### 10.3 切换时要改的地方（按顺序）
+
+| # | 位置 | 改什么 |
+| --- | --- | --- |
+| 1 | 新环境 `.env.local` | `APP_URL=https://新域名` |
+| 2 | Supabase → Authentication → URL Configuration | Site URL 和 Redirect URLs 改成新域名 |
+| 3 | 微信商户（若启用） | 回调地址 `https://新域名/api/commerce/payments/webhook/wechat` |
+| 4 | `README.md`、`docs/MANUAL_PAYMENT.md`、`docs/当前任务分工.md` | 链接文案 |
+| 5 | 已交付的 ZIP/PNG | 见 10.4，需要重生成或用跳转兜底 |
+
+### 10.4 已发出去的二维码怎么办
+
+关键在于：**二维码是烤进 PNG 图片里的**，不是动态生成的。改 `APP_URL` 只会影响**以后**生成的海报，
+已经交付给客户的 PNG/ZIP 里仍然是旧域名。
+
+三个选项：
+
+| 方案 | 说明 | 代价 |
+| --- | --- | --- |
+| **A. 旧域名做 301 跳转**（推荐） | 保留 Render 或任意跳转服务，把 `oneboss-ai.onrender.com/p/*` 301 到新域名同路径 | 旧域名要一直续着 |
+| B. 重新生成交付物 | 用新域名重新跑发布 + 交付，重新发给客户 | 已交付的要重发 |
+| C. 接受失效 | 什么都不做 | 老二维码扫码打不开 |
+
+**A 是唯一不伤害已有客户的方案**：客户扫旧二维码 → 旧域名 301 → 新站，体验无感。
+
+只要旧域名还解析、还能返回 301，二维码就不算失效 —— 所以第 5 节的切换顺序里，
+「停 Render」必须放在「旧域名保留跳转」之后。
+
+### 10.5 切换检查清单
+
+```
+[ ] 新域名 https 可访问，/api/health 返回 200
+[ ] APP_URL 已改为新域名，重启服务
+[ ] /admin/login 打开正常，能登录
+[ ] 发布一个测试项目，检查海报二维码解码后是新域名
+[ ] Supabase Auth 的 Site URL / Redirect 已更新
+[ ] 旧域名 301 规则生效（curl -I 看 Location）
+[ ] README / MANUAL_PAYMENT / 当前任务分工 的链接已更新
+[ ] 观察 24 小时，再决定是否停 Render
+```

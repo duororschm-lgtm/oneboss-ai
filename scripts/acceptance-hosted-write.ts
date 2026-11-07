@@ -24,7 +24,7 @@ assert(
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://mxyocfnzrfpujnkqikbp.supabase.co',
   'EXPECTED_PROJECT_REQUIRED',
 );
-const origin = 'https://oneboss-ai.onrender.com';
+const origin = (process.env.APP_URL || 'https://oneboss-ai.onrender.com');
 process.env.APP_URL = origin;
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,

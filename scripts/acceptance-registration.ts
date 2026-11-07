@@ -34,7 +34,7 @@ let legacyId: string | undefined, registeredId: string | undefined;
 let server: ChildProcess | undefined,
   browser: Browser | undefined,
   db: ReturnType<typeof postgres> | undefined;
-let origin = 'https://oneboss-ai.onrender.com',
+let origin = (process.env.APP_URL || 'https://oneboss-ai.onrender.com'),
   passed = false,
   removed = 0,
   phase = 'setup';
