@@ -436,16 +436,26 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
             }
             if (action === 'approve-design') {
               const b = z
-                  .object({ runId: Id, styleId: z.string().max(100) })
+                  .object({
+                    runId: Id,
+                    directionId: z.uuid().optional(),
+                    styleId: z.string().max(100).optional(),
+                  })
                   .strict()
+                  .refine((v) => v.directionId || v.styleId, {
+                    message: 'directionId or styleId required',
+                  })
                   .parse(body),
                 p = await service.project(tx, actor, id);
               await service.entitlement(tx, p);
               const [run] =
                 await tx`select output,input from agent_runs where id=${b.runId} and project_id=${id} and role='design' and status='SUCCEEDED'`;
               assert(run && run.input.factVersion === p.fact_version, 'DESIGN_NOT_READY');
-              const choices = DesignChoices.parse(run.output),
-                choice = choices.choices.find((c) => c.styleId === b.styleId);
+              const choices = DesignChoices.parse(run.output);
+              // directionId (server-assigned) is the primary selection key; styleId remains for legacy runs.
+              const choice = b.directionId
+                ? choices.choices.find((c) => c.directionId === b.directionId)
+                : choices.choices.find((c) => c.styleId === b.styleId);
               assert(choice, 'STYLE_NOT_FOUND');
               const [{ revision }] =
                 await tx`select coalesce(max(revision),0)+1 revision from design_systems where project_id=${id}`;

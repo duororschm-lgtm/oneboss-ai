@@ -756,12 +756,30 @@ function CreativeChoices({
       r.status === 'SUCCEEDED' &&
       r.factVersion === data.project.fact_version,
   );
-  const choices = (run?.output as Row)?.choices || [];
+  const choices = ((run?.output as Row)?.choices || []) as Row[];
+  const [signedAssets, setSignedAssets] = useState<{ id: string; url?: string }[]>([]);
+  useEffect(() => {
+    let live = true;
+    void customerApi<{ assets: { id: string; url?: string }[] }>(
+      `core/projects/${data.project.id}/assets`,
+    )
+      .then((v) => {
+        if (live) setSignedAssets(v.assets ?? []);
+      })
+      .catch(() => {
+        if (live) setSignedAssets(data.assets.map((a) => ({ id: a.id })));
+      });
+    return () => {
+      live = false;
+    };
+  }, [data.project.id, data.assets]);
   return (
     <>
       <section className="ob-card">
         <h2>为产品生成不同的创意方向</h2>
-        <p>每个方案包含布局、色彩、字体与设计理由。先批准产品需求摘要，再让创意团队开始。</p>
+        <p>
+          每个方案包含独立的设计DNA、页面构图、色彩、字体与设计理由。AI 根据商品特征独立设计不同的页面结构，不是套用固定模板。先批准产品需求摘要，再让创意团队开始。
+        </p>
         <div className="ob-actions">
           <button
             disabled={disabled || !data.briefs[0]?.approved_at}
@@ -782,15 +800,24 @@ function CreativeChoices({
       </section>
       <div className="ob-grid ob-two">
         {choices.map((c: Row) => (
-          <article className="ob-choice" key={c.styleId}>
-            <span className="ob-eyebrow">{c.layoutMode}</span>
-            <h2>{c.styleId}</h2>
+          <article className="ob-choice" key={c.directionId ?? c.styleId}>
+            <span className="ob-eyebrow">{c.density || c.layoutMode || '设计方案'}</span>
+            <h2>{c.name || c.styleId}</h2>
+            {c.tagline && <p className="ob-muted">{c.tagline}</p>}
             <div className="ob-palette">
-              {Object.entries(c.palette).map(([key, color]) => (
+              {Object.entries(c.palette || {}).map(([key, color]) => (
                 <i key={key} style={{ background: String(color) }} title={`${key}: ${color}`} />
               ))}
             </div>
-            <p>{c.rationale}</p>
+            {Array.isArray(c.visualKeywords) && c.visualKeywords.length > 0 && (
+              <p className="ob-muted">视觉关键词：{c.visualKeywords.join(' · ')}</p>
+            )}
+            <p>{c.visualConcept || c.rationale}</p>
+            {c.siteBlueprint && (
+              <p className="ob-muted">
+                页面构图：{c.siteBlueprint.pages?.[0]?.sections?.map((s: Row) => s.type).join(' → ')}
+              </p>
+            )}
             <p className="ob-muted">以下是基于已确认资料的方向示意，非最终作品。</p>
             <SiteFrame
               mapped={directionPreview(
@@ -798,18 +825,24 @@ function CreativeChoices({
                 data.project.fact_version,
                 c as Workspace['designs'][number]['body'],
                 data.facts,
+                signedAssets,
               )}
               width="100%"
-              title={`设计方向 ${c.styleId}`}
+              title={`设计方向 ${c.name || c.styleId}`}
               height={440}
             />
             <p className="ob-muted">
-              字体：{Object.values(c.typography).join(' / ')} · 动效：{c.motionPreset}
+              字体：{Object.values(c.typography || {}).join(' / ')} · 动效：{c.motionPreset}
             </p>
             <button
               disabled={disabled}
               className="ob-button"
-              onClick={() => void action('approve-design', { runId: run!.id, styleId: c.styleId })}
+              onClick={() =>
+                void action('approve-design', {
+                  runId: run!.id,
+                  ...(c.directionId ? { directionId: c.directionId } : { styleId: c.styleId }),
+                })
+              }
             >
               选择并批准此方向
             </button>
@@ -818,7 +851,8 @@ function CreativeChoices({
       </div>
       {data.designs[0] && (
         <Notice>
-          已批准方向：{data.designs[0].body.styleId} · 资料版本 {data.designs[0].body.factVersion}
+          已批准方向：{data.designs[0].body.name || data.designs[0].body.styleId} · 资料版本{' '}
+          {data.designs[0].body.factVersion}
         </Notice>
       )}
     </>

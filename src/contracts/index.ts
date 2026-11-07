@@ -51,6 +51,67 @@ export const Brief = z
     approval: z.enum(['pending', 'approved', 'changes_requested']),
   })
   .strict();
+export const SectionTypes = [
+  'hero',
+  'gallery',
+  'features',
+  'specs',
+  'product-grid',
+  'brand',
+  'story',
+  'contact',
+] as const;
+// Section layout primitives shared by Site Blueprint and production SiteSpec.
+// All fields optional so legacy records and minimal model output stay valid.
+export const SectionLayout = z
+  .object({
+    variant: z
+      .string()
+      .regex(/^[a-z0-9-]{1,60}$/)
+      .optional(),
+    columns: z.number().int().min(1).max(4).optional(),
+    alignment: z.enum(['left', 'center', 'right']).optional(),
+    width: z.enum(['narrow', 'standard', 'wide', 'full']).optional(),
+    emphasis: z.enum(['image-led', 'text-led', 'balanced']).optional(),
+    background: z.enum(['plain', 'surface', 'inverted', 'accent']).optional(),
+    imageRatio: z.enum(['square', 'portrait', 'landscape', 'wide']).optional(),
+  })
+  .strict();
+export const SiteBlueprint = z
+  .object({
+    pages: z
+      .array(
+        z
+          .object({
+            slug: z
+              .string()
+              .regex(/^[a-z0-9-]*$/)
+              .max(80),
+            title: z.string().max(150),
+            sections: z
+              .array(
+                z
+                  .object({
+                    type: z.enum(SectionTypes),
+                    layout: SectionLayout,
+                    // Semantic keys resolved server-side into real fact IDs. Never UUIDs from the model.
+                    factKeys: z.array(z.string().min(1).max(100)).max(20).optional(),
+                    assetRoles: z.array(z.string().min(1).max(50)).max(10).optional(),
+                    note: z.string().max(300).optional(),
+                  })
+                  .strict(),
+              )
+              .min(1)
+              .max(30),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(10),
+    contentWidth: z.enum(['narrow', 'standard', 'wide', 'full']).optional(),
+    visualRhythm: z.enum(['calm', 'layered', 'punchy']).optional(),
+  })
+  .strict();
 export const DesignSystem = z
   .object({
     version: Revision,
@@ -64,32 +125,33 @@ export const DesignSystem = z
     motionPreset: z.enum(['none', 'subtle', 'energetic']),
     approvedByClient: z.boolean(),
     factVersion: Revision,
+    // --- Design DNA extension (all optional for legacy compatibility) ---
+    directionId: z.uuid().optional(),
+    name: z.string().max(100).optional(),
+    tagline: z.string().max(300).optional(),
+    visualConcept: z.string().max(1000).optional(),
+    visualKeywords: z.array(z.string().max(50)).max(10).optional(),
+    density: z.enum(['airy', 'balanced', 'dense']).optional(),
+    imageTreatment: z.enum(['full-bleed', 'framed', 'collage', 'minimal']).optional(),
+    heroComposition: z
+      .enum(['split-editorial', 'full-bleed', 'centered-stage', 'type-led', 'asymmetric'])
+      .optional(),
+    pageGrid: z
+      .object({
+        contentWidth: z.enum(['narrow', 'standard', 'wide', 'full']).optional(),
+        columns: z.number().int().min(4).max(12).optional(),
+        gutter: z.number().min(0).max(64).optional(),
+      })
+      .strict()
+      .optional(),
+    siteBlueprint: SiteBlueprint.optional(),
   })
   .strict();
-export const SectionTypes = [
-  'hero',
-  'gallery',
-  'features',
-  'specs',
-  'product-grid',
-  'brand',
-  'story',
-  'contact',
-] as const;
 // Props deliberately contain presentation primitives only. Customer text/URLs come from references.
 export const Section = z
   .object({
     type: z.enum(SectionTypes),
-    props: z
-      .object({
-        variant: z
-          .string()
-          .regex(/^[a-z0-9-]{1,60}$/)
-          .optional(),
-        columns: z.number().int().min(1).max(4).optional(),
-        alignment: z.enum(['left', 'center', 'right']).optional(),
-      })
-      .strict(),
+    props: SectionLayout,
     factRefs: z.array(Id),
     assetRefs: z.array(Id),
   })
@@ -244,3 +306,6 @@ export type FactType = z.infer<typeof Fact>;
 export type Site = z.infer<typeof SiteSpec>;
 export type Poster = z.infer<typeof PosterSpec>;
 export type ProductionType = z.infer<typeof Production>;
+export type SectionLayoutType = z.infer<typeof SectionLayout>;
+export type SiteBlueprintType = z.infer<typeof SiteBlueprint>;
+export type DesignSystemType = z.infer<typeof DesignSystem>;
