@@ -361,6 +361,20 @@ try {
   await step('brief-approved', () =>
     api(`core/projects/${project.id}/approve-brief`, { revision: intake.brief.revision }),
   );
+  if (process.env.PREPARE_PUBLIC_DEMO_ONLY === 'true') {
+    console.log(
+      JSON.stringify({
+        prepared: true,
+        passed: false,
+        projectId: project.id,
+        publicUrl: `${origin}/p/${slug}`,
+        publicUrlAvailable: false,
+        expiresAt: hosting.expiresAt,
+        next: 'Deploy verified runtime, then rerun without PREPARE_PUBLIC_DEMO_ONLY; no model called by this preparation.',
+      }),
+    );
+    process.exit(0);
+  }
   const designRun: any = await step('design-run', () =>
     api(`core/projects/${project.id}/design-options`, {}),
   );

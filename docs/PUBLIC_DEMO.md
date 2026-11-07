@@ -12,6 +12,8 @@ node --env-file=.env.local --import tsx scripts/public-demo.ts
 
 执行前部署支持演示提示的运行版本。工具先检查`/p/blackcode-demo`是否被其他项目占用，占用即停止，不覆盖。使用独立普通Auth身份、组织、专业版90天`isDemo`订单和受保护的本机sandbox helper，不启用公开sandbox，不发生真实资金交易。生成、批准、发布和交付仍走正常API与Render worker，不绕过审批或浏览器门禁。
 
+若只准备独立身份、演示订单和已批准资料，额外设置`PREPARE_PUBLIC_DEMO_ONLY=true`；工具会在模型生成前退出，输出`prepared:true, passed:false`，不表示案例已公开。继续时移除该变量，再执行同一命令，沿用同一检查点。
+
 私有检查点`.secrets/public-demo/blackcode.json`保存演示身份、随机凭据、各阶段结果和幂等键。**不得上传该文件。**同一命令重跑沿用项目和任务编号；已失败的模型任务会报错，不自动创建另一笔订单或重复消耗。需要修正输入并重新生成时，先检查失败依据，按正常项目操作处理，不删除检查点从头运行。
 
 两个产品分别介绍基础/专业服务，输出1080×1350、1080×1080海报、配套文案和二维码。成品检查包括签名PNG/QR、ZIP逐项哈希、三宽度浏览器和普通非成员读写403；临时权限测试账号清理，长期演示身份保留。结果和截图保存在`.cache/public-demo/`，`result.json`成功前不应宣传案例已可用。
