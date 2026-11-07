@@ -1,16 +1,17 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCustomer, customerApi } from './session';
 import { Notice, Loading, money, statusLabel } from './shell';
 import type { Account, Row } from '../../lib/customer/types';
 import { ProjectStudio } from './studio';
 import { usePaymentMethods } from './payment-methods';
-import { AdminConsole } from './admin';
 import { ManualPayment } from './manual-payment';
 
 export function Dashboard({ path }: { path: string[] }) {
   const { session, ready } = useCustomer();
+  const router = useRouter();
   const [account, setAccount] = useState<Account>(),
     [error, setError] = useState('');
   const load = useCallback(async () => {
@@ -25,6 +26,10 @@ export function Dashboard({ path }: { path: string[] }) {
     if (session) void load();
     else setAccount(undefined);
   }, [session, load]);
+  // 旧的内嵌审核页已下线：管理员统一走独立的 /admin 后台，旧链接直接跳过去。
+  useEffect(() => {
+    if (path[0] === 'admin') router.replace('/admin');
+  }, [path, router]);
   if (!ready)
     return (
       <main className="ob-container">
@@ -59,7 +64,6 @@ export function Dashboard({ path }: { path: string[] }) {
         ['', '总览'],
         ['orders', '我的订单'],
         ['projects', '我的项目'],
-        ...(account?.isAdmin ? [['admin', '服务审核']] : []),
       ];
   return (
     <main className="ob-workspace">
@@ -95,7 +99,7 @@ export function Dashboard({ path }: { path: string[] }) {
           </Notice>
         )}
         {path[0] === 'admin' ? (
-          <AdminConsole />
+          <p>管理员平台已迁至独立的 <Link href="/admin">/admin</Link> 入口，正在跳转…</p>
         ) : projectId ? (
           <ProjectStudio key={projectId} id={projectId} section={path[2] || 'intake'} />
         ) : path[0] === 'orders' && path[1] ? (

@@ -4,7 +4,7 @@
 
 微信商户自动支付默认关闭，目前使用微信收款码和人工到账核验。普通客户使用账号和密码直接注册，无需邮箱或验证码；原邮箱账户可继续登录。邮件找回仍需配置 SMTP。没有把演示订单当作真实收款。
 
-客户页面：`/`、`/pricing`、`/checkout`、`/login`、`/dashboard`、`/dashboard/projects/:id/intake|creative|studio|revise|delivery|agents`。平台审核：`/dashboard/admin`，要求已有 `platform_admins` 授权，不自动授予新账户权限。
+客户页面：`/`、`/pricing`、`/checkout`、`/login`、`/dashboard`、`/dashboard/projects/:id/intake|creative|studio|revise|delivery|agents`。平台审核：`/admin`（独立管理员平台），要求已有 `platform_admins` 授权，不自动授予新账户权限。
 
 ## 本地开发
 
@@ -64,7 +64,7 @@ npm run smoke:public -- <published-slug>
 
 ## 已有成果与交接入口
 
-- [在线网站](https://oneboss-ai.onrender.com/)、[套餐](https://oneboss-ai.onrender.com/pricing)、[互动演示](https://oneboss-ai.onrender.com/examples)、[客户登录](https://oneboss-ai.onrender.com/login)、[审核后台](https://oneboss-ai.onrender.com/dashboard/admin)。
+- [在线网站](https://oneboss-ai.onrender.com/)、[套餐](https://oneboss-ai.onrender.com/pricing)、[互动演示](https://oneboss-ai.onrender.com/examples)、[客户登录](https://oneboss-ai.onrender.com/login)、[管理员平台](https://oneboss-ai.onrender.com/admin)。
 - [当前任务分工](docs/当前任务分工.md)：A组、B组与服务提供方的待办、依赖和验收标准。
 - [未完成事项](未完成事项.md)：目标已暂停，保留剩余工作、证据缺口与恢复顺序。
 - [真实渲染样例与交付ZIP](docs/showcase/README.md)：系统演示成果，历史测试网址已清理。
