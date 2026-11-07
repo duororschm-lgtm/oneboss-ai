@@ -1,5 +1,6 @@
 import { database, transaction, type Actor } from '../core/db';
-import { project, entitlement, facts, idempotent } from '../core/service';
+import { project, entitlement, facts, idempotent, platformAdmin } from '../core/service';
+import { recordAudit } from '../core/audit';
 import { assert } from '../core/errors';
 import { Production, DesignSystem } from '../../contracts';
 import { validateProduction } from '../core/validation';
@@ -63,11 +64,16 @@ export async function approveArtifact(
     },
   );
 }
+async function publicationStage(run: Record<string, any>, stage: string) {
+  const rows =
+    await database()`update agent_runs set stage=${stage} where id=${run.id} and lease_token=${run.lease_token} and status='RUNNING' and lease_until>now() returning id`;
+  assert(rows.length, 'LEASE_LOST', 409);
+}
 export async function publishRevision(run: Record<string, any>) {
   const revision = run.input.revision as number;
   const previous: Record<string, any> = await database().begin(async (tx) => {
     const [lease] =
-      await tx`select id from agent_runs where id=${run.id} and lease_token=${run.lease_token} and status='RUNNING' for update`;
+      await tx`select id from agent_runs where id=${run.id} and lease_token=${run.lease_token} and status='RUNNING' and lease_until>now() for update`;
     assert(lease, 'LEASE_LOST', 409);
     const [p] = await tx`select * from projects where id=${run.project_id} for update`;
     await entitlement(tx, p);
@@ -75,43 +81,119 @@ export async function publishRevision(run: Record<string, any>) {
       await tx`select * from artifact_versions where project_id=${p.id} and revision=${revision} and status in ('APPROVED','PUBLISHED') and approved_by is not null`;
     assert(v && v.fact_version === p.fact_version, 'APPROVAL_REQUIRED', 409);
     const url = `${appOrigin()}/p/${p.publish_slug}`;
-    await tx`update projects set published_revision=${revision},published_verified=false,publication_token=${run.lease_token} where id=${p.id}`;
+    assert(p.fact_version === run.input.factVersion, 'FACT_VERSION_CHANGED', 409);
+    // Keep the last verified public pointer intact. A fenced request header exposes
+    // this approved candidate only to the publication verifier, never normal visitors.
+    await tx`update projects set publication_token=${run.lease_token} where id=${p.id}`;
     return { ...p, url };
   });
   try {
-    const html = await verifyPublicUrl(previous.url, `/p/${previous.publish_slug}`);
+    await publicationStage(run, 'publish-http');
+    const html = await verifyPublicUrl(previous.url, `/p/${previous.publish_slug}`, {
+      publicationToken: run.lease_token,
+    });
     assert(html.includes(`data-oneboss-revision="${revision}"`), 'PUBLIC_REVISION_MISMATCH', 502);
-    const browserEvidence = await verifyPublishedBrowser(previous.publish_slug, revision);
+    const browserEvidence = await verifyPublishedBrowser(previous.publish_slug, revision, {
+      publicationToken: run.lease_token,
+      onStage: (stage) => publicationStage(run, stage),
+    });
+    await publicationStage(run, 'publish-commit');
     await database().begin(async (tx) => {
+      const [lease] =
+        await tx`select id from agent_runs where id=${run.id} and lease_token=${run.lease_token} and status='RUNNING' and lease_until>now() for update`;
       const [p] = await tx`select * from projects where id=${run.project_id} for update`;
       await entitlement(tx, p);
-      const [lease] =
-        await tx`select id from agent_runs where id=${run.id} and lease_token=${run.lease_token} and status='RUNNING'`;
+      const [approved] =
+        await tx`select id from artifact_versions where project_id=${p.id} and revision=${revision} and fact_version=${p.fact_version} and status in ('APPROVED','PUBLISHED') and approved_by is not null`;
       assert(
         lease &&
-          p.published_revision === revision &&
+          approved &&
           p.publication_token === run.lease_token &&
           p.fact_version === run.input.factVersion,
         'PUBLICATION_CONFLICT',
         409,
       );
-      await tx`update projects set published_verified=true,browser_verified_revision=${revision},status='PUBLISHED' where id=${p.id}`;
+      await tx`update projects set published_revision=${revision},published_verified=true,browser_verified_revision=${revision},publication_token=null,status='PUBLISHED' where id=${p.id}`;
       await tx`update artifact_versions set status='PUBLISHED' where project_id=${p.id} and revision=${revision}`;
     });
     return { publicUrl: previous.url, revision, verified: true, browserEvidence };
   } catch (error) {
-    await database()`update projects set published_revision=${previous.published_revision},published_verified=${previous.published_verified} where id=${run.project_id} and published_revision=${revision} and publication_token=${run.lease_token}`;
+    // Never restore a stale snapshot over another publisher. The public tuple was
+    // not modified, so failure only releases our own candidate token.
+    await database()`update projects set publication_token=null where id=${run.project_id} and publication_token=${run.lease_token}`;
     throw error;
   }
 }
-export async function publicProject(slug: string) {
+
+/** Operator retry is constrained to failed publish/delivery, never model production. */
+export async function retryPublication(actor: Actor, runId: string, key: string) {
+  const scope = await transaction(actor, async (tx) => {
+    await platformAdmin(tx, actor, 'act.release');
+    const [run] = await tx`select org_id from agent_runs where id=${runId}`;
+    assert(run, 'NOT_FOUND', 404);
+    return run.org_id;
+  });
+  return idempotent(
+    actor,
+    key,
+    `publication-retry:${runId}`,
+    {},
+    scope,
+    async (tx) => {
+      await platformAdmin(tx, actor, 'act.release');
+      const [old] = await tx`select * from agent_runs where id=${runId} for update`;
+      assert(old && ['publish', 'delivery'].includes(old.role), 'PUBLICATION_RETRY_ONLY', 409);
+      assert(old.status === 'FAILED', 'TASK_NOT_TERMINAL', 409);
+      const [p] = await tx`select * from projects where id=${old.project_id} for update`;
+      await entitlement(tx, p);
+      assert(old.input.factVersion === p.fact_version, 'FACT_VERSION_CHANGED', 409);
+      const [active] =
+        await tx`select id from agent_runs where project_id=${p.id} and status in ('QUEUED','RUNNING')`;
+      assert(!active, 'TASK_ALREADY_ACTIVE', 409);
+      const [{ n }] = await tx`select count(*)::int n from agent_runs where project_id=${p.id}`;
+      assert(n < 100, 'PROJECT_RUN_BUDGET_EXCEEDED', 429);
+      if (old.role === 'publish') {
+        const [v] =
+          await tx`select id from artifact_versions where project_id=${p.id} and revision=${old.input.revision} and fact_version=${p.fact_version} and status in ('APPROVED','PUBLISHED') and approved_by is not null`;
+        assert(v, 'APPROVAL_REQUIRED', 409);
+      } else
+        assert(
+          p.published_verified && p.browser_verified_revision === p.published_revision,
+          'VERIFIED_SITE_REQUIRED',
+          409,
+        );
+      const [run] =
+        await tx`insert into agent_runs(org_id,project_id,role,input) values(${old.org_id},${p.id},${old.role},${tx.json({ ...old.input, retryOf: old.id })}) returning id,status`;
+      await recordAudit(tx, actor, {
+        action: 'retry-publication',
+        target: p.id,
+        targetId: p.id,
+        result: 'success',
+        details: { previousRunId: old.id, runId: run.id, role: old.role },
+      });
+      return { runId: run.id, status: run.status, role: old.role, retryOf: old.id };
+    },
+    'platform',
+  );
+}
+export async function publicProject(slug: string, publicationToken?: string | null) {
   if (!/^[a-z0-9-]{1,100}$/.test(slug)) return null;
   const [p] =
-    await database()`select p.id,p.publish_slug,p.published_revision,e.is_demo,e.expires_at from projects p join project_entitlements e on e.project_id=p.id where p.publish_slug=${slug} and not e.revoked and e.expires_at>now()`;
-  if (!p?.published_revision) return null;
+    await database()`select p.id,p.publish_slug,p.published_revision,p.published_verified,p.browser_verified_revision,p.publication_token,p.fact_version,e.is_demo,e.expires_at from projects p join project_entitlements e on e.project_id=p.id where p.publish_slug=${slug} and not e.revoked and e.expires_at>now()`;
+  if (!p) return null;
+  let revision = p.published_revision;
+  if (publicationToken) {
+    if (!/^[0-9a-f-]{36}$/i.test(publicationToken) || p.publication_token !== publicationToken)
+      return null;
+    const [candidate] =
+      await database()`select input from agent_runs where project_id=${p.id} and role='publish' and status='RUNNING' and lease_token=${publicationToken} and lease_until>now()`;
+    if (!candidate || candidate.input.factVersion !== p.fact_version) return null;
+    revision = candidate.input.revision;
+  } else if (!p.published_verified || p.browser_verified_revision !== revision) return null;
+  if (!revision) return null;
   const [v] =
-    await database()`select body,fact_version from artifact_versions where project_id=${p.id} and revision=${p.published_revision} and status in ('APPROVED','PUBLISHED') and approved_by is not null`;
-  if (!v) return null;
+    await database()`select body,fact_version from artifact_versions where project_id=${p.id} and revision=${revision} and status in ('APPROVED','PUBLISHED') and approved_by is not null`;
+  if (!v || (publicationToken && v.fact_version !== p.fact_version)) return null;
   const body = Production.parse(v.body);
   const refs = [...new Set(body.site.pages.flatMap((x) => x.sections.flatMap((s) => s.factRefs)))];
   const fs =
@@ -121,14 +203,14 @@ export async function publicProject(slug: string) {
   ];
   const assets =
     await database()`select id,storage_path,width,height from media_assets where project_id=${p.id} and id=any(${assetRefs}::uuid[]) and license_status='customer_authorized'`;
-  const publicAssets = await Promise.all(
-    assets.map(async (a) => ({
-      id: a.id,
-      width: a.width,
-      height: a.height,
-      url: await signed(a.storage_path),
-    })),
-  );
+  const publicAssets = assets.map((a) => ({
+    id: a.id,
+    width: a.width,
+    height: a.height,
+    // Resolve against the current approved public artifact on every request.
+    // A lazy image no longer expires after a five-minute Storage signature.
+    url: `${appOrigin()}/p/${p.publish_slug}/assets/${a.id}`,
+  }));
   const [d] =
     await database()`select body from design_systems where project_id=${p.id} and revision=${body.site.designSystemVersion} and approved_at is not null`;
   assert(d, 'DESIGN_MISSING', 503);
@@ -137,7 +219,7 @@ export async function publicProject(slug: string) {
     design: DesignSystem.parse(d.body),
     facts: fs,
     assets: publicAssets,
-    revision: p.published_revision,
+    revision,
     demo: p.is_demo ? { expiresAt: new Date(p.expires_at).toISOString() } : undefined,
     publicBasePath: `/p/${p.publish_slug}`,
   };

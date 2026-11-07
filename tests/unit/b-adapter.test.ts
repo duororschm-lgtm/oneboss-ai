@@ -200,3 +200,21 @@ it('formats approved product prices without mixing service fees or fabricating u
     displayFact({ amountMinor: null, currency: 'CNY', unit: '件', priceType: 'not_disclosed' }),
   ).toBe('价格未公开');
 });
+it('accepts only the exact server-scoped stable public asset route, rejecting other projects and origins', () => {
+  vi.stubEnv('APP_URL', 'https://oneboss.example');
+  const f = input();
+  const id = '11111111-1111-4111-8111-111111111111';
+  f.siteInput.site.pages[0].sections[0].assetRefs = [id];
+  const base = {
+    ...f.siteInput,
+    publicBasePath: '/p/test',
+    assets: [{ id, url: `https://oneboss.example/p/test/assets/${id}` }],
+  };
+  expect(mapSite(base).seed.assets[0].url).toBe(`https://oneboss.example/p/test/assets/${id}`);
+  for (const url of [
+    `/p/other/assets/${id}`,
+    `https://evil.example/p/test/assets/${id}`,
+    `/p/test/assets/${id}?token=secret`,
+  ])
+    expect(() => mapSite({ ...base, assets: [{ id, url }] })).toThrow('UNAUTHORIZED_ASSET_URL');
+});

@@ -5,7 +5,8 @@ import { AppError, assert } from '../core/errors';
 export function appOrigin() {
   const value = process.env.APP_URL;
   assert(value, 'APP_URL_NOT_CONFIGURED', 503);
-  const url = new URL(value);
+  let url:URL;
+  try { url = new URL(value); } catch {throw new AppError('HTTPS_ORIGIN_REQUIRED');}
   assert(
     url.protocol === 'https:' &&
       !url.username &&
@@ -43,22 +44,39 @@ export function publicAddress(address: string) {
     !address.toLowerCase().startsWith('2001:db8:')
   );
 }
-export async function verifyPublicUrl(value: string, expectedPath: string) {
+export async function verifyPublicUrl(
+  value: string,
+  expectedPath: string,
+  options: { publicationToken?: string } = {},
+) {
   const url = new URL(value);
   assert(
     url.origin === appOrigin() && url.pathname === expectedPath && !url.search && !url.hash,
     'UNTRUSTED_PUBLIC_URL',
   );
-  const addresses = await lookup(url.hostname, { all: true });
+  let addresses;
+  try {
+    addresses = await lookup(url.hostname, { all: true });
+  } catch {
+    throw new AppError('PUBLIC_DNS_FAILED', 502);
+  }
   assert(
     addresses.length && addresses.every((x) => publicAddress(x.address)),
     'PRIVATE_ADDRESS_BLOCKED',
   );
-  const response = await outboundFetch(url, {
-    redirect: 'error',
-    signal: AbortSignal.timeout(15000),
-    cache: 'no-store',
-  });
+  let response: Response;
+  try {
+    response = await outboundFetch(url, {
+      redirect: 'error',
+      signal: AbortSignal.timeout(15000),
+      cache: 'no-store',
+      ...(options.publicationToken
+        ? { headers: { 'X-OneBoss-Publication': options.publicationToken } }
+        : {}),
+    });
+  } catch {
+    throw new AppError('PUBLIC_SITE_UNREACHABLE', 502);
+  }
   if (!response.ok) throw new AppError('PUBLIC_SITE_UNREACHABLE', 502);
   const text = await response.text();
   assert(text.includes('data-oneboss-revision='), 'PUBLIC_SITE_INVALID', 502);

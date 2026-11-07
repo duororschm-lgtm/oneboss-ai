@@ -17,7 +17,7 @@ import QRCode from 'qrcode';
 import sharp from 'sharp';
 import * as adapters from '../../src/lib/core/creative';
 import { createDelivery } from '../../src/lib/delivery/service';
-import { previewProject, publicProject } from '../../src/lib/publishing/service';
+import { retryPublication, publishRevision, previewProject, publicProject } from '../../src/lib/publishing/service';
 import { accountWorkspace, projectWorkspace } from '../../src/lib/core/workspace';
 import { adminWorkspace } from '../../src/lib/core/workspace';
 import { registrationLimit } from '../../src/lib/security/registration';
@@ -113,7 +113,7 @@ describe.sequential('real PostgreSQL business invariants', () => {
       const { createHash } = await import('node:crypto');
       expect(migration.hash).toBe(
         createHash('sha256')
-          .update(await readFile('supabase/migrations/' + migration.name, 'utf8'))
+          .update((await readFile('supabase/migrations/' + migration.name, 'utf8')).replace(/\r\n/g,'\n'))
           .digest('hex'),
       );
     }
@@ -776,7 +776,7 @@ describe.sequential('real PostgreSQL business invariants', () => {
       const [p] = await db`select * from projects where id=${projectId}`;
       expect(p.status).toBe('ACCEPTED');
       // A new fact snapshot cannot reuse the previous ZIP under the same publication.
-      await expect(createDelivery({}, { p: { ...p, fact_version: 3 } })).rejects.toThrow(
+      await expect(createDelivery({project_id:p.id}, { p: { ...p, fact_version: 3 } })).rejects.toThrow(
         'FACT_VERSION_CHANGED',
       );
     } finally {
@@ -926,9 +926,147 @@ describe.sequential('real PostgreSQL business invariants', () => {
       const [done] = await db`select status,output from agent_runs where id=${success.id}`;
       expect(done.status).toBe('SUCCEEDED');
       expect(done.output.browserEvidence).toEqual(evidence);
+      expect((await transaction(owner,tx=>projectWorkspace(tx,owner,projectId))).publication.publicUrl).toMatch(/https:\/\/oneboss.example\/p\//);
       const [verified] =
         await db`select published_verified,browser_verified_revision from projects where id=${projectId}`;
       expect(verified).toMatchObject({ published_verified: true, browser_verified_revision: 1 });
+    } finally {
+      http.mockRestore();
+      browser.mockRestore();
+      if (oldOrigin) process.env.APP_URL = oldOrigin;
+      else delete process.env.APP_URL;
+    }
+  });
+  it('isolates a candidate from public readers and preserves the old verified tuple on failed QA', async () => {
+    const oldOrigin = process.env.APP_URL;
+    process.env.APP_URL = 'https://oneboss.example';
+    const [base] = await db`select * from projects where id=${projectId}`;
+    const [e] =
+      await db`select remaining_revisions from project_entitlements where project_id=${projectId}`;
+    await db`update artifact_versions set status='APPROVED',approved_by=${owner.userId} where project_id=${projectId} and revision=2`;
+    await db`update projects set published_revision=1,published_verified=true,browser_verified_revision=1,status='PUBLISHED' where id=${projectId}`;
+    const http = vi
+      .spyOn(network, 'verifyPublicUrl')
+      .mockResolvedValue('data-oneboss-revision="2"');
+    const signed = vi.spyOn(files, 'signed').mockResolvedValue('https://assets.example/test.png');
+    const mimo = vi.spyOn(gateway, 'callMimo');
+    let token: string | undefined;
+    const browser = vi
+      .spyOn(browserQA, 'verifyPublishedBrowser')
+      .mockImplementation(async (_slug, _revision, options) => {
+        token = options?.publicationToken;
+        expect((await publicProject(base.publish_slug))?.revision).toBe(1);
+        expect((await publicProject(base.publish_slug, token))?.revision).toBe(2);
+        expect(await publicProject(base.publish_slug, randomUUID())).toBeNull();
+        throw new AppError('INTERACTION_QA_FAILED', 502);
+      });
+    try {
+      const r = await transaction(owner, (tx) =>
+        core.enqueue(tx, owner, projectId, 'publish', { revision: 2 }),
+      );
+      await runOne();
+      const [p] =
+        await db`select published_revision,published_verified,browser_verified_revision,status,publication_token from projects where id=${projectId}`;
+      expect(p).toMatchObject({
+        published_revision: 1,
+        published_verified: true,
+        browser_verified_revision: 1,
+        status: 'PUBLISHED',
+        publication_token: null,
+      });
+      expect((await publicProject(base.publish_slug))?.revision).toBe(1);
+      expect(await publicProject(base.publish_slug, token)).toBeNull();
+      expect(mimo).not.toHaveBeenCalled();
+      expect(
+        (
+          await db`select remaining_revisions from project_entitlements where project_id=${projectId}`
+        )[0].remaining_revisions,
+      ).toBe(e.remaining_revisions);
+      expect(
+        (
+          await db`select stage from task_events where run_id=${r.id} and error_class='INTERACTION_QA_FAILED' order by id desc limit 1`
+        )[0].stage,
+      ).toContain('retry-wait');
+      await db`update agent_runs set status='FAILED' where id=${r.id}`;
+    } finally {
+      http.mockRestore();
+      signed.mockRestore();
+      mimo.mockRestore();
+      browser.mockRestore();
+      if (oldOrigin) process.env.APP_URL = oldOrigin;
+      else delete process.env.APP_URL;
+    }
+  });
+  it('allows only authorized, audited, idempotent publication-only retries', async () => {
+    const [prior] =
+      await db`select id from agent_runs where project_id=${projectId} and role='publish' and status='FAILED' order by created_at desc limit 1`;
+    await expect(retryPublication(owner, prior.id, 'publish-retry-user-denied')).rejects.toThrow(
+      'PLATFORM_ADMIN_REQUIRED',
+    );
+    const before = (
+      await db`select remaining_revisions from project_entitlements where project_id=${projectId}`
+    )[0].remaining_revisions;
+    const first = (await retryPublication(staff, prior.id, 'publish-retry-staff-safe')) as any;
+    const second = (await retryPublication(staff, prior.id, 'publish-retry-staff-safe')) as any;
+    expect(first.runId).toBe(second.runId);
+    expect(first.role).toBe('publish');
+    expect(
+      (
+        await db`select count(*)::int n from admin_audit_logs where action='retry-publication' and details->>'runId'=${first.runId}`
+      )[0].n,
+    ).toBe(1);
+    expect(
+      (
+        await db`select remaining_revisions from project_entitlements where project_id=${projectId}`
+      )[0].remaining_revisions,
+    ).toBe(before);
+    await db`update agent_runs set status='FAILED' where id=${first.runId}`;
+  });
+  it('fences stale publication commits and atomically switches only a verified candidate', async () => {
+    const oldOrigin = process.env.APP_URL;
+    process.env.APP_URL = 'https://oneboss.example';
+    const http = vi
+      .spyOn(network, 'verifyPublicUrl')
+      .mockResolvedValue('data-oneboss-revision="2"');
+    const browser = vi
+      .spyOn(browserQA, 'verifyPublishedBrowser')
+      .mockResolvedValue(
+        [375, 768, 1280].map((width) => ({ width, revision: 2, passed: true as const })),
+      );
+    try {
+      const r = await transaction(owner, (tx) =>
+        core.enqueue(tx, owner, projectId, 'publish', { revision: 2 }),
+      );
+      const claims = await Promise.all([claimRun(), claimRun()]);
+      expect(claims.filter(Boolean)).toHaveLength(1);
+      const run = claims.find(Boolean)!;
+      browser.mockImplementationOnce(async () => {
+        await db`update agent_runs set lease_token=${randomUUID()} where id=${r.id}`;
+        return [];
+      });
+      await expect(publishRevision(run)).rejects.toThrow('LEASE_LOST');
+      expect(
+        (await db`select published_revision from projects where id=${projectId}`)[0]
+          .published_revision,
+      ).toBe(1);
+      await db`update agent_runs set status='FAILED' where id=${r.id}`;
+      const good = await transaction(owner, (tx) =>
+        core.enqueue(tx, owner, projectId, 'publish', { revision: 2 }),
+      );
+      await runOne();
+      expect((await db`select status from agent_runs where id=${good.id}`)[0].status).toBe(
+        'SUCCEEDED',
+      );
+      expect(
+        (
+          await db`select published_revision,published_verified,browser_verified_revision,publication_token from projects where id=${projectId}`
+        )[0],
+      ).toMatchObject({
+        published_revision: 2,
+        published_verified: true,
+        browser_verified_revision: 2,
+        publication_token: null,
+      });
     } finally {
       http.mockRestore();
       browser.mockRestore();

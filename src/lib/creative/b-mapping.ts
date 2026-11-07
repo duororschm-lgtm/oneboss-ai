@@ -109,7 +109,13 @@ export function mapDesign(
     typography,
     spacingScale:
       input.spacingScale.length > 0
-        ? Math.min(1.6, Math.max(0.8, input.spacingScale.reduce((a, b) => a + b, 0) / input.spacingScale.length / 16))
+        ? Math.min(
+            1.6,
+            Math.max(
+              0.8,
+              input.spacingScale.reduce((a, b) => a + b, 0) / input.spacingScale.length / 16,
+            ),
+          )
         : base.spacingScale,
     radiusScale: Math.min(48, input.radiusScale[0] ?? base.radiusScale),
     layoutMode: input.layoutMode || base.layoutMode,
@@ -123,8 +129,7 @@ export function mapDesign(
     density: input.density ?? base.density,
     imageTreatment: input.imageTreatment ?? base.imageTreatment,
     // Section flow is derived from the blueprint when available.
-    sectionFlow:
-      input.siteBlueprint?.pages[0]?.sections.map((s) => s.type) ?? base.sectionFlow,
+    sectionFlow: input.siteBlueprint?.pages[0]?.sections.map((s) => s.type) ?? base.sectionFlow,
   });
 }
 function renderAssets(
@@ -133,6 +138,7 @@ function renderAssets(
   projectId: string,
   publicUrls: boolean,
   expectedOrigin = process.env.NEXT_PUBLIC_SUPABASE_URL,
+  publicBasePath?: string,
 ): Asset[] {
   const byId = new Map(
     values.map((value) => {
@@ -147,6 +153,23 @@ function renderAssets(
     let url: string | undefined;
     if (asset.url) {
       let valid = false;
+      let publicAsset = false;
+      try {
+        const target = new URL(asset.url),
+          origin = new URL(process.env.APP_URL || '');
+        publicAsset =
+          !!publicBasePath &&
+          /^\/p\/[a-z0-9-]{1,100}$/.test(publicBasePath) &&
+          origin.protocol === 'https:' &&
+          target.origin === origin.origin &&
+          !target.username &&
+          !target.password &&
+          !target.search &&
+          !target.hash &&
+          target.pathname === `${publicBasePath}/assets/${id}`;
+      } catch {
+        /* preserve strict signed-URL fallback */
+      }
       try {
         const parsed = new URL(asset.url);
         const expected = expectedOrigin || process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -159,7 +182,7 @@ function renderAssets(
       } catch {
         valid = false;
       }
-      if (valid) url = asset.url;
+      if (valid || publicAsset) url = asset.url;
       // In production mode an invalid URL is a hard failure, not a silent fallback.
       else if (publicUrls) assert(false, 'UNAUTHORIZED_ASSET_URL');
     }
@@ -293,6 +316,7 @@ function mapSiteForView(
     site.projectId,
     publicUrls,
     expectedOrigin,
+    input.publicBasePath,
   );
   const seed = seedFor(site.projectId, site.factVersion, facts, assets);
   const sections: SiteSection[] = page.sections.flatMap((section, index): SiteSection[] => {

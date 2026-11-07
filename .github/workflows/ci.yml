@@ -2,7 +2,7 @@ name: Core checks
 on:
   pull_request:
   push:
-    branches: [main, feat/core, fix/oneboss-fullflow]
+    branches: [main, feat/core, fix/oneboss-fullflow, fix/codex-publish-public-link]
 permissions:
   contents: read
 jobs:
@@ -39,3 +39,7 @@ jobs:
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: '1'
+      - name: Install publication QA Chromium
+        run: npx playwright-core install --with-deps chromium
+      - name: Publication browser regression
+        run: npx vitest run tests/browser

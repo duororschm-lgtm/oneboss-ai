@@ -1,5 +1,34 @@
 # OneBoss UI/API 契约草案 v0.1
 
+## 2026-11-08 发布修复增量（PR基线，未上线）
+
+以下覆盖本草案涉及发布的旧描述，其他接口不变。候选版本令牌属于服务端内部验收，不是客户公开链接；B不得拼接URL或传候选头绕过验收。
+
+`GET /api/core/projects/:id/workspace`（原租户成员权限、no-store）新增：
+
+```json
+{
+  "publication": {
+    "verified": true,
+    "publicUrl": "https://example.com/p/test-product",
+    "revision": 2,
+    "verifiedAt": "2026-11-08T00:00:00.000Z",
+    "task": {"runId":"测试UUID","status":"SUCCEEDED","stage":"completed","attempt":1,"errorCode":null,"errorIsHistorical":false},
+    "deliveryReady": false
+  }
+}
+```
+
+仅测试示例。verified/ deliveryReady为boolean；publicUrl/verifiedAt可null，revision可null，task可null。URL来自成功publish任务证据且匹配当前Origin/slug及有效权益，不能用当前APP_URL重新拼出“已验证”链接。无证据、过期、配置变更时publicUrl=null。deliveryReady要求当前manifest URL一致；签名下载仍走既有受保护delivery接口，不在此返回私有路径。内部publication_token从workspace及项目详情响应隐藏。
+
+活动任务stage包括publish-http、publish-browser-launch、publish-browser-375/768/1280-navigation/images/interaction、publish-commit；失败/重试stage保留失败位置前缀。RUNNING新尝试error_class清空，历史失败保留在task_events；errorIsHistorical为true表示队列重试显示的旧错误，不可当本轮仍执行失败。
+
+`POST /api/admin/agents/runs/:runId/retry-publication`：Owner/Operations具备act.release，Bearer+Idempotency-Key，application/json正文严格`{}`；返回201 `{runId,status:"QUEUED",role:"publish"|"delivery",retryOf}`。仅失败终态且审批、事实版本、权益有效、无活动任务时允许；不调用MiMo/不扣修改权益，同事务审计。重放同key返回同runId。错误403 ADMIN_CAPABILITY_REQUIRED，409 PUBLICATION_RETRY_ONLY/TASK_NOT_TERMINAL/FACT_VERSION_CHANGED/TASK_ALREADY_ACTIVE/APPROVAL_REQUIRED/VERIFIED_SITE_REQUIRED，429 PROJECT_RUN_BUDGET_EXCEEDED。
+
+`GET /p/:slug/assets/:assetId`：只服务当前公开作品引用的授权图片；无匹配、过期或未发布返回404，Storage失败502 PUBLIC_ASSET_UNAVAILABLE；返回图片字节/no-store/nosniff，不泄露Storage路径或签名。公开URL稳定，桶仍私有。
+
+保留PUBLIC_REVISION_MISMATCH、LEASE_LOST、PUBLICATION_CONFLICT、LAYOUT_OVERFLOW、BROKEN_IMAGE、BROWSER_ERRORS；细化PUBLIC_DNS_FAILED、BROWSER_LAUNCH_FAILED、BROWSER_TIMEOUT、INTERACTION_QA_FAILED。delivery发现现有成功ZIP的域名与本次不同返回DELIVERY_ORIGIN_CHANGED，不覆盖旧交付。轮询沿用3秒/隐藏30秒/退避/终态停止的只读约定。
+
 2026-11-08（Asia/Shanghai），A0源码审计版。适用本地 `fix/oneboss-fullflow`（V4 5699449 + 当前未提交改动），**不是生产已上线接口声明**。既有合同 `docs/PROJECT_CONTRACT.md` 中的创意结构仍有效，本草案补充业务接口与已知缺口。未经评估不重命名现有字段；B只能对接标记“已实现”的部分。
 
 ## 通用规则

@@ -106,7 +106,8 @@ export async function claimRun(workerId?: string) {
     const expired =
       await tx`update agent_runs set status='FAILED',stage='lease-exhausted',error_class='LEASE_EXHAUSTED',lease_token=null,lease_until=null,completed_at=now() where status='RUNNING' and lease_until<now() and attempt>=max_attempts returning project_id,role,input`;
     for (const job of expired) {
-      await tx`update projects set status='GENERATION_FAILED' where id=${job.project_id}`;
+      if (!['publish', 'delivery'].includes(job.role))
+        await tx`update projects set status='GENERATION_FAILED' where id=${job.project_id}`;
       if (job.role === 'change') {
         await tx`update project_entitlements set remaining_revisions=remaining_revisions+1 where project_id=${job.project_id}`;
         await tx`update change_requests set status='FAILED' where id=${job.input.changeId}`;
@@ -114,7 +115,7 @@ export async function claimRun(workerId?: string) {
     }
   });
   const [run] =
-    await database()`update agent_runs set status='RUNNING',attempt=attempt+1,lease_token=${token},worker_id=${workerId ?? null},stage='preparing',lease_until=now()+interval '5 minutes' where id=(select id from agent_runs where ((status='QUEUED' and next_attempt_at<=now()) or (status='RUNNING' and lease_until<now())) and attempt<max_attempts order by created_at for update skip locked limit 1) returning *`;
+    await database()`update agent_runs set status='RUNNING',error_class=null,attempt=attempt+1,lease_token=${token},worker_id=${workerId ?? null},stage='preparing',lease_until=now()+interval '5 minutes' where id=(select id from agent_runs where ((status='QUEUED' and next_attempt_at<=now()) or (status='RUNNING' and lease_until<now())) and attempt<max_attempts order by created_at for update skip locked limit 1) returning *`;
   return run;
 }
 async function snapshot(run: Record<string, any>) {
@@ -145,6 +146,7 @@ export async function runOne(workerId?: string) {
   const run = await claimRun(workerId);
   if (!run) return false;
   let usage: unknown = {};
+  const startedAt = Date.now();
   const heartbeat = setInterval(() => {
     void database()`update agent_runs set lease_until=now()+interval '5 minutes' where id=${run.id} and lease_token=${run.lease_token} and status='RUNNING'`.catch(
       () => {},
@@ -152,7 +154,14 @@ export async function runOne(workerId?: string) {
   }, 30000);
   try {
     const context = await snapshot(run);
-    const stage = run.role === 'generate' || run.role === 'change' ? 'model-production' : run.role === 'design' || run.role === 'intake' ? 'model-analysis' : run.role === 'publish' ? 'publishing' : 'rendering-delivery';
+    const stage =
+      run.role === 'generate' || run.role === 'change'
+        ? 'model-production'
+        : run.role === 'design' || run.role === 'intake'
+          ? 'model-analysis'
+          : run.role === 'publish'
+            ? 'publishing'
+            : 'rendering-delivery';
     await database()`update agent_runs set stage=${stage} where id=${run.id} and lease_token=${run.lease_token} and status='RUNNING'`;
     let output: unknown;
     if (run.role === 'publish') output = await publishRevision(run);
@@ -163,7 +172,9 @@ export async function runOne(workerId?: string) {
         callMimo(DesignChoices, 'creative director', {
           ...context,
           previousDesignFeedback: feedback ?? null,
-          task: feedback ? `${DESIGN_TASK}\n\nPREVIOUS ATTEMPT FEEDBACK (must fix):\n${feedback}` : DESIGN_TASK,
+          task: feedback
+            ? `${DESIGN_TASK}\n\nPREVIOUS ATTEMPT FEEDBACK (must fix):\n${feedback}`
+            : DESIGN_TASK,
         });
       let result = await attempt();
       usage = { attempt1: result.usage };
@@ -336,7 +347,7 @@ Based on the asset quality assessment:
         ? error.code
         : error instanceof z.ZodError
           ? 'SCHEMA_INVALID'
-          : 'TASK_FAILED';
+          : run.role === 'publish' ? 'PUBLICATION_FAILED' : run.role === 'delivery' ? 'DELIVERY_FAILED' : 'TASK_FAILED';
     const terminal =
       run.attempt >= run.max_attempts ||
       [
@@ -349,8 +360,15 @@ Based on the asset quality assessment:
         'DESIGN_DIRECTIONS_NOT_DISTINCT',
         'SITE_BLUEPRINT_REQUIRED',
       ].includes(code);
+    const [currentStage] =
+      await database()`select stage from agent_runs where id=${run.id} and lease_token=${run.lease_token}`;
     console.error(
       JSON.stringify({
+        projectId: run.project_id,
+        revision: run.input.revision ?? null,
+        stage: currentStage?.stage ?? 'unknown',
+        elapsedMs: Date.now() - startedAt,
+        environmentVersion: process.env.DEPLOY_COMMIT_SHA || 'unknown',
         runId: run.id,
         role: run.role,
         attempt: run.attempt,
@@ -364,9 +382,10 @@ Based on the asset quality assessment:
     );
     await database().begin(async (tx) => {
       const rows =
-        await tx`update agent_runs set status=${terminal ? 'FAILED' : 'QUEUED'},stage=${terminal ? 'failed' : 'retry-wait'},error_class=${code},usage=${tx.json(usage as any)},lease_token=null,lease_until=null,completed_at=${terminal ? new Date() : null},next_attempt_at=now()+${run.attempt * 10}*interval '1 second' where id=${run.id} and lease_token=${run.lease_token} returning id`;
+        await tx`update agent_runs set status=${terminal ? 'FAILED' : 'QUEUED'},stage=${(terminal ? 'failed:' : 'retry-wait:') + (currentStage?.stage || 'unknown')},error_class=${code},usage=${tx.json(usage as any)},lease_token=null,lease_until=null,completed_at=${terminal ? new Date() : null},next_attempt_at=now()+${run.attempt * 10}*interval '1 second' where id=${run.id} and lease_token=${run.lease_token} returning id`;
       if (rows.length && terminal) {
-        await tx`update projects set status='GENERATION_FAILED' where id=${run.project_id}`;
+        if (!['publish', 'delivery'].includes(run.role))
+          await tx`update projects set status='GENERATION_FAILED' where id=${run.project_id}`;
         if (run.role === 'change') {
           await tx`update project_entitlements set remaining_revisions=remaining_revisions+1 where project_id=${run.project_id}`;
           await tx`update change_requests set status='FAILED' where id=${run.input.changeId}`;

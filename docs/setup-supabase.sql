@@ -15,9 +15,9 @@ BEGIN
 ('202611070003_manual_payment_reports.sql', 'd634e669f15daa8e1bebc998c8c5aa630743ef27856398ed06fa250dbe425620'),
 ('202611080001_admin_audit.sql', '3af67f138592645a5b08d3c15b84e0ff159d7b34312f11592ca3776a925d7f73'),
 ('202611080002_manual_channels_and_addons.sql', 'e68c283086f57a3bb411d08306dd1603ea736a021497a2665b92aab2ad433b28'),
-('202611080003_refund_confirmation_time.sql', '5384ae2de360f5766dcaf64c6f675663db7d0278e2d053763cbd7ca5afb4d8b1'),
-('202611080004_task_observability.sql', 'c39e97d9b2735211769792fc42edec74d643eb15632f43ccb94869623ce85f21'),
-('202611080005_admin_roles_and_audit.sql', 'e351c0afaa07ab22ad9a185944e203e53ec7989ddfe42d4f3937548e262b7246'))) = 10
+('202611080003_refund_confirmation_time.sql', '36379cdab085a5852be99858a6904ba5650f5d983922dab327ffe0b6b5322e60'),
+('202611080004_task_observability.sql', 'd4ec5bd2fcaa1c8d929a1efa20ae76159618aef48c2b8a4a82ca62ace2c3c95d'),
+('202611080005_admin_roles_and_audit.sql', 'cb3134b8d2e8a790a38a105092bf267212fa9b8182915a3525852c5e47b93dd2'))) = 10
       AND to_regclass('public.organizations') IS NOT NULL
       AND to_regclass('public.deliveries') IS NOT NULL THEN
       RAISE NOTICE 'OneBoss migrations already applied; existing data retained';
@@ -195,14 +195,14 @@ end $$;
 create unique index one_payment_fact_per_order on payment_events(order_id);
 
 
--- Migration: 202611080003_refund_confirmation_time.sql; sha256: 5384ae2de360f5766dcaf64c6f675663db7d0278e2d053763cbd7ca5afb4d8b1
+-- Migration: 202611080003_refund_confirmation_time.sql; sha256: 36379cdab085a5852be99858a6904ba5650f5d983922dab327ffe0b6b5322e60
 -- Historical confirmed refunds have no provable confirmation timestamp.
 -- Leave NULL and report as undated; never substitute request time.
 alter table refunds add column if not exists confirmed_at timestamptz;
 create index if not exists refunds_confirmed_at on refunds(confirmed_at) where status='CONFIRMED';
 
 
--- Migration: 202611080004_task_observability.sql; sha256: c39e97d9b2735211769792fc42edec74d643eb15632f43ccb94869623ce85f21
+-- Migration: 202611080004_task_observability.sql; sha256: d4ec5bd2fcaa1c8d929a1efa20ae76159618aef48c2b8a4a82ca62ace2c3c95d
 -- Real task attribution; combined production remains one task.
 alter table agent_runs add column employee_key text;
 alter table agent_runs add column stage text;
@@ -246,7 +246,7 @@ create function task_events_append_only() returns trigger language plpgsql as $$
 create trigger task_events_append_only before update or delete on task_events for each row execute function task_events_append_only();
 
 
--- Migration: 202611080005_admin_roles_and_audit.sql; sha256: e351c0afaa07ab22ad9a185944e203e53ec7989ddfe42d4f3937548e262b7246
+-- Migration: 202611080005_admin_roles_and_audit.sql; sha256: cb3134b8d2e8a790a38a105092bf267212fa9b8182915a3525852c5e47b93dd2
 -- Preserve existing authorized administrators as owners. No new administrators are granted.
 alter table platform_admins add column role text not null default 'owner' check(role in ('owner','finance','operations','reviewer'));
 alter table admin_audit_logs add column request_id text;
@@ -265,9 +265,9 @@ alter table admin_audit_logs add column target_id uuid;
 ('202611070003_manual_payment_reports.sql', 'd634e669f15daa8e1bebc998c8c5aa630743ef27856398ed06fa250dbe425620'),
 ('202611080001_admin_audit.sql', '3af67f138592645a5b08d3c15b84e0ff159d7b34312f11592ca3776a925d7f73'),
 ('202611080002_manual_channels_and_addons.sql', 'e68c283086f57a3bb411d08306dd1603ea736a021497a2665b92aab2ad433b28'),
-('202611080003_refund_confirmation_time.sql', '5384ae2de360f5766dcaf64c6f675663db7d0278e2d053763cbd7ca5afb4d8b1'),
-('202611080004_task_observability.sql', 'c39e97d9b2735211769792fc42edec74d643eb15632f43ccb94869623ce85f21'),
-('202611080005_admin_roles_and_audit.sql', 'e351c0afaa07ab22ad9a185944e203e53ec7989ddfe42d4f3937548e262b7246');
+('202611080003_refund_confirmation_time.sql', '36379cdab085a5852be99858a6904ba5650f5d983922dab327ffe0b6b5322e60'),
+('202611080004_task_observability.sql', 'd4ec5bd2fcaa1c8d929a1efa20ae76159618aef48c2b8a4a82ca62ace2c3c95d'),
+('202611080005_admin_roles_and_audit.sql', 'cb3134b8d2e8a790a38a105092bf267212fa9b8182915a3525852c5e47b93dd2');
 END
 $oneboss_bootstrap$;
 NOTIFY pgrst, 'reload schema';

@@ -49,12 +49,15 @@ export async function inspectPng(
 }
 export async function createDelivery(run: Record<string, any>, context: Record<string, any>) {
   const { p } = context;
+  assert(run.project_id === p.id, 'DELIVERY_VERSION_CONFLICT', 409);
   assert(p.published_revision && p.published_verified, 'VERIFIED_SITE_REQUIRED');
   assert(p.browser_verified_revision === p.published_revision, 'BROWSER_QA_REQUIRED');
+  const url = `${appOrigin()}/p/${p.publish_slug}`;
   const [existing] =
     await database()`select manifest from deliveries where project_id=${p.id} and revision=${p.published_revision}`;
   if (existing) {
     assert(existing.manifest.factVersion === p.fact_version, 'FACT_VERSION_CHANGED', 409);
+    assert(existing.manifest.publicSiteUrl === url, 'DELIVERY_ORIGIN_CHANGED', 409);
     return existing.manifest;
   }
   const [version] =
@@ -65,8 +68,12 @@ export async function createDelivery(run: Record<string, any>, context: Record<s
     await database()`select body from design_systems where project_id=${p.id} and revision=${production.site.designSystemVersion} and approved_at is not null`;
   assert(storedDesign, 'DESIGN_MISSING');
   const design = storedDesign.body;
-  const url = `${appOrigin()}/p/${p.publish_slug}`;
-  await verifyPublicUrl(url, `/p/${p.publish_slug}`);
+  const html = await verifyPublicUrl(url, `/p/${p.publish_slug}`);
+  assert(
+    html.includes(`data-oneboss-revision="${p.published_revision}"`),
+    'PUBLIC_REVISION_MISMATCH',
+    502,
+  );
   const renderer = await creative(),
     zip = new JSZip(),
     files: { path: string; sha256: string; size: number; storagePath?: string }[] = [],
@@ -154,7 +161,7 @@ export async function createDelivery(run: Record<string, any>, context: Record<s
     const [current] = await tx`select * from projects where id=${p.id} for update`;
     await entitlement(tx, current);
     const [lease] =
-      await tx`select id from agent_runs where id=${run.id} and lease_token=${run.lease_token} and status='RUNNING'`;
+      await tx`select id from agent_runs where id=${run.id} and lease_token=${run.lease_token} and status='RUNNING' and lease_until>now()`;
     assert(
       lease &&
         current.fact_version === p.fact_version &&

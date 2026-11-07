@@ -187,7 +187,7 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
       const p = await transaction(actor, (tx) => service.project(tx, actor, id));
       orgId = p.org_id;
       if (method === 'GET') {
-        if (path.length === 3) return response(p);
+        if (path.length === 3) return response({...p,publication_token:undefined});
         if (path[3] === 'poster-preview' && path.length === 4) {
           const params = new URL(request.url).searchParams;
           const bytes = await posterPreview(

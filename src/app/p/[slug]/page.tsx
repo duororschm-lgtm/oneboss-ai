@@ -1,10 +1,13 @@
 import { notFound } from 'next/navigation';
 import { cache } from 'react';
+import { headers } from 'next/headers';
 import { creative } from '../../../lib/core/creative';
 import { publicProject } from '../../../lib/publishing/service';
 import { DemoNotice } from '../../../lib/publishing/demo-notice';
 export const dynamic = 'force-dynamic';
-const loadProject = cache(publicProject);
+const loadProject = cache(async (slug: string) =>
+  publicProject(slug, (await headers()).get('x-oneboss-publication')),
+);
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const data = await loadProject(slug);

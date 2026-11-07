@@ -14,6 +14,7 @@ import { transaction } from '../../../../lib/core/db';
 import { AppError, assert } from '../../../../lib/core/errors';
 import * as service from '../../../../lib/core/service';
 import * as admin from '../../../../lib/admin/server';
+import { retryPublication } from '../../../../lib/publishing/service';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -31,10 +32,40 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
     const url = new URL(request.url);
     const query = url.searchParams;
 
-    assert(request.method === 'GET', 'METHOD_NOT_ALLOWED', 405);
+    assert(['GET', 'POST'].includes(request.method), 'METHOD_NOT_ALLOWED', 405);
 
     const actor = { ...(await authenticate(request)), requestId };
     await service.rateLimit(actor);
+
+    if (request.method === 'POST') {
+      assert(
+        path.length === 4 &&
+          path[0] === 'agents' &&
+          path[1] === 'runs' &&
+          path[3] === 'retry-publication',
+        'NOT_FOUND',
+        404,
+      );
+      const runId = z.uuid().parse(path[2]);
+      assert(
+        request.headers.get('content-type')?.startsWith('application/json'),
+        'JSON_REQUIRED',
+        415,
+      );
+      const body = await request.text();
+      assert(body.length <= 4096, 'BODY_TOO_LARGE', 413);
+      let input: unknown;
+      try {
+        input = JSON.parse(body);
+      } catch {
+        throw new AppError('VALIDATION_FAILED', 400);
+      }
+      z.object({}).strict().parse(input);
+      return response(
+        await retryPublication(actor, runId, request.headers.get('Idempotency-Key') || ''),
+        201,
+      );
+    }
 
     const data = await transaction(actor, async (tx) => {
       if (route === 'dashboard') return admin.overview(tx, actor);
@@ -61,7 +92,7 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
 
       if (route === 'approvals') return admin.approvals(tx, actor);
 
-      if (route === 'agents/workers') return admin.workerHealth(tx,actor);
+      if (route === 'agents/workers') return admin.workerHealth(tx, actor);
 
       if (route === 'agents/runs')
         return admin.agentRuns(tx, actor, {
@@ -106,10 +137,12 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
         },
         400,
       );
-    if (error instanceof AppError) return response({ error: { code: error.code, requestId } }, error.status);
+    if (error instanceof AppError)
+      return response({ error: { code: error.code, requestId } }, error.status);
     console.error(JSON.stringify({ requestId, errorClass: 'ADMIN_API_FAILED' }));
     return response({ error: { code: 'INTERNAL_ERROR', requestId } }, 500);
   }
 }
 
 export const GET = handle;
+export const POST = handle;

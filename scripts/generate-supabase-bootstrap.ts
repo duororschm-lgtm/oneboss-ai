@@ -4,7 +4,7 @@ const quote = (value: string) => "'" + value.replaceAll("'", "''") + "'";
 const names = (await readdir('supabase/migrations')).filter((n) => n.endsWith('.sql')).sort();
 const migrations = await Promise.all(
   names.map(async (name) => {
-    const sql = await readFile(`supabase/migrations/${name}`, 'utf8');
+    const sql = (await readFile(`supabase/migrations/${name}`, 'utf8')).replace(/\r\n/g, '\n');
     return { name, sql, hash: createHash('sha256').update(sql).digest('hex') };
   }),
 );
