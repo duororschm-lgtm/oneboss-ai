@@ -237,6 +237,100 @@ function StatusBadge({ status, label }: { status: RunStatus | string; label: str
   );
 }
 
+/**
+ * 侧边栏步骤条：7 个业务阶段竖排、可点击跳转。
+ * 取代原来占据页面顶部的横向大卡片——进度是导航，不该抢内容的位置。
+ */
+const STAGE_ROUTE: Record<string, string> = {
+  intake: 'intake',
+  design: 'creative',
+  awaiting_design: 'creative',
+  generate: 'studio',
+  review: 'studio',
+  publish: 'studio',
+  delivery: 'delivery',
+};
+
+const STAGE_MARK: Record<WorkflowStatus, string> = {
+  done: '✓',
+  active: '●',
+  waiting: '!',
+  failed: '×',
+  pending: '○',
+};
+
+export function ProgressSidebar({
+  projectId,
+  section,
+}: {
+  projectId: string;
+  section: string;
+}) {
+  const [project, setProject] = useState<Row | null>(null);
+  const [runs, setRuns] = useState<Row[]>([]);
+  const [failed, setFailed] = useState(false);
+  const alive = useRef(true);
+
+  const load = useCallback(async (): Promise<boolean> => {
+    try {
+      const ws = await customerApi<Row>(`core/projects/${projectId}/workspace`);
+      if (!alive.current) return true;
+      setProject(ws.project ?? null);
+      setRuns((ws.runs || []) as Row[]);
+      setFailed(false);
+      return true;
+    } catch {
+      if (alive.current) setFailed(true);
+      return false;
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    alive.current = true;
+    void load();
+    return () => {
+      alive.current = false;
+    };
+  }, [load]);
+  useTaskPolling(true, load);
+
+  const needsAction = useMemo(() => needsCustomerAction(project, runs), [project, runs]);
+  const { doneCount, total } = useMemo(
+    () => computeProgress(runs, project, needsAction),
+    [runs, project, needsAction],
+  );
+
+  return (
+    <div className="ob-steps">
+      <p className="ob-eyebrow">进度 · {doneCount}/{total}</p>
+      <ol>
+        {WORKFLOW.map((stage) => {
+          const status = getWorkflowStatus(stage, runs, null, project, needsAction);
+          const href = `/dashboard/projects/${projectId}/${STAGE_ROUTE[stage.key] ?? 'intake'}`;
+          const current = (STAGE_ROUTE[stage.key] ?? 'intake') === section;
+          return (
+            <li key={stage.key}>
+              <Link
+                href={href}
+                data-status={status}
+                aria-current={current ? 'true' : undefined}
+                className={current ? 'is-current' : undefined}
+                title={stage.description}
+              >
+                <span className="ob-step-dot" aria-hidden="true">
+                  {STAGE_MARK[status]}
+                </span>
+                <span className="ob-step-label">{stage.label}</span>
+              </Link>
+            </li>
+          );
+        })}
+      </ol>
+      {failed && <p className="ob-muted">状态同步中断，稍后自动重试。</p>}
+    </div>
+  );
+}
+
 export function ProductionProgress({ projectId }: { projectId: string }) {
   const [data, setData] = useState<DisplayState>({
     project: null,

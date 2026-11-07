@@ -6,7 +6,7 @@ import { useCustomer, customerApi } from './session';
 import { Notice, Loading, money, statusLabel } from './shell';
 import type { Account, Row } from '../../lib/customer/types';
 import { ProjectStudio } from './studio';
-import { ProductionProgress } from './production-progress';
+import { ProgressSidebar } from './production-progress';
 import { usePaymentMethods } from './payment-methods';
 import { ManualPayment } from './manual-payment';
 
@@ -71,7 +71,17 @@ export function Dashboard({ path }: { path: string[] }) {
       <aside className="ob-sidebar">
         <p className="ob-eyebrow">{projectId ? 'YOUR PROJECT' : 'WORKSPACE'}</p>
         {projectId && <Link href="/dashboard">← 返回工作台</Link>}
-        {links.map(([key, label]) => {
+        {projectId && (
+          <ProgressSidebar projectId={projectId} section={path[2] || 'intake'} />
+        )}
+        {(projectId
+          ? [
+              ['posters', '海报文案'],
+              ['revise', '提出修改'],
+              ['agents', '任务记录'],
+            ]
+          : links
+        ).map(([key, label]) => {
           const href = projectId
             ? `/dashboard/projects/${projectId}/${key}`
             : `/dashboard${key ? '/' + key : ''}`;
@@ -102,11 +112,7 @@ export function Dashboard({ path }: { path: string[] }) {
         {path[0] === 'admin' ? (
           <p>管理员平台已迁至独立的 <Link href="/admin">/admin</Link> 入口，正在跳转…</p>
         ) : projectId ? (
-          <>
-            {/* 生产进度中心：真实 agent_runs + task_events，不显示虚构百分比 */}
-            <ProductionProgress projectId={projectId} />
-            <ProjectStudio key={projectId} id={projectId} section={path[2] || 'intake'} />
-          </>
+          <ProjectStudio key={projectId} id={projectId} section={path[2] || 'intake'} />
         ) : path[0] === 'orders' && path[1] ? (
           <OrderDetail id={path[1]} onChanged={load} />
         ) : !account ? (

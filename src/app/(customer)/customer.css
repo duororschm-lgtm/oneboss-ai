@@ -437,6 +437,76 @@
   background: #e0e5d7;
   font-weight: 650;
 }
+/* 侧边栏进度步骤条：竖向、可点击，替代原来占据内容区的横向大卡片 */
+.ob-steps {
+  margin: 10px 0 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--ob-line);
+}
+.ob-steps ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1px;
+}
+.ob-steps a {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 10px;
+  margin: 0;
+  border-radius: 3px;
+  font-size: 13px;
+  color: var(--ob-muted);
+  text-decoration: none;
+}
+.ob-steps a:hover {
+  background: #f1efe6;
+  color: var(--ob-ink);
+}
+.ob-steps a.is-current {
+  background: #e8e6da;
+  color: var(--ob-ink);
+  font-weight: 650;
+}
+.ob-step-dot {
+  width: 17px;
+  height: 17px;
+  flex: none;
+  border: 1px solid var(--ob-line);
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  line-height: 1;
+  background: #fffef9;
+  color: var(--ob-muted);
+}
+.ob-steps a[data-status='done'] .ob-step-dot {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #fff;
+}
+.ob-steps a[data-status='active'] .ob-step-dot {
+  background: #4f46e5;
+  border-color: #4f46e5;
+  color: #fff;
+}
+.ob-steps a[data-status='waiting'] .ob-step-dot {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #fff;
+}
+.ob-steps a[data-status='failed'] .ob-step-dot {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #fff;
+}
+.ob-steps a[data-status='pending'] .ob-step-label {
+  opacity: 0.7;
+}
 .ob-workspace h1 {
   font-size: 32px;
   margin-bottom: 12px;
