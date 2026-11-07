@@ -7,6 +7,7 @@ import type { Account, Row } from '../../lib/customer/types';
 import { ProjectStudio } from './studio';
 import { usePaymentMethods } from './payment-methods';
 import { AdminConsole } from './admin';
+import { ManualPayment } from './manual-payment';
 
 export function Dashboard({ path }: { path: string[] }) {
   const { session, ready } = useCustomer();
@@ -209,7 +210,7 @@ function OrderDetail({ id, onChanged }: { id: string; onChanged: () => Promise<v
     void load();
   }, [load]);
   useEffect(() => {
-    if (!payment || order?.pay_state !== 'PENDING_CONFIRMATION') return;
+    if (order?.pay_state !== 'PENDING_CONFIRMATION') return;
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible') void load();
     }, 6000);
@@ -300,7 +301,9 @@ function OrderDetail({ id, onChanged }: { id: string; onChanged: () => Promise<v
               </button>
             ) : ['UNPAID', 'PENDING_CONFIRMATION'].includes(order.pay_state) ? (
               <>
-                {methods.wechatNative && !order.is_demo ? (
+                {methods.manualVerified && methods.manual && !order.is_demo ? (
+                  <ManualPayment order={order} method={methods.manual} onChanged={load} />
+                ) : methods.wechatNative && !order.is_demo ? (
                   <>
                     <Notice>
                       收款服务提供方：BlackCode。请核对订单金额后，使用微信扫一扫完成付款；付款结果由商户核验。

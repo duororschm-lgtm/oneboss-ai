@@ -174,128 +174,146 @@ try {
   );
   const project = await api('core/projects', token, { orderId: order.id });
   projectId = project.id;
-  const productId = randomUUID();
-  const facts = [
-    { id: randomUUID(), productId, key: 'name', value: 'OneBoss 联调演示' },
-    {
-      id: randomUUID(),
-      productId,
-      key: 'price',
-      value: { amountMinor: 12900, currency: 'CNY', unit: '份', priceType: 'fixed' },
-    },
-    {
-      id: randomUUID(),
-      productId,
-      key: 'description',
-      value: '仅用于系统验收，不是真实商品销售。',
-    },
-  ].map((f) => ({ ...f, source: 'customer', verified: true, version: 1 }));
-  const intake = await api(`core/projects/${projectId}/intake`, token, {
-    products: [
-      { id: productId, name: 'OneBoss 联调演示', description: '系统演示资料，不是真实销售。' },
-    ],
-    facts,
-    brief: {
-      projectId,
-      organizationId: orgId,
-      productIds: [productId],
-      objective: '制作明确标识的系统演示宣传，不增加商品声明。',
-      confirmedFacts: facts.map((f) => f.id),
-      assetRefs: [],
-      preferredStyles: ['editorial-minimal', 'future-tech'],
-      restrictions: ['不编造产品材质、性能、销量或真实收款。'],
-      deliverables: { site: true, posterCount: 1, xhsCopy: true },
-      approval: 'pending',
-    },
-  });
-  await api(`core/projects/${projectId}/approve-brief`, token, { revision: intake.brief.revision });
-  phase = 'render-real-worker-generation';
-  const designRun = await api(`core/projects/${projectId}/design-options`, token, {});
-  const directions = await completed(designRun);
-  await api(`core/projects/${projectId}/approve-design`, token, {
-    runId: designRun.id,
-    styleId: directions.choices[0].styleId,
-  });
-  const production = await completed(await api(`core/projects/${projectId}/generate`, token, {}));
-  await api(`core/projects/${projectId}/approve-revision`, token, {
-    revision: production.artifactRevision,
-  });
-  phase = 'public-https-publication';
-  await completed(
-    await api(`core/projects/${projectId}/publish`, token, {
-      revision: production.artifactRevision,
-    }),
-  );
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(
-      process.execPath,
-      ['--import', 'tsx', 'scripts/smoke-public.ts', project.publish_slug],
+  if (process.env.RUN_HOSTED_CUSTOMER_UI === 'true') {
+    phase = 'real-customer-browser-flow';
+    const { verifyHostedCustomerFlow } = await import('./acceptance-hosted-customer-flow');
+    manifest = await verifyHostedCustomerFlow({
+      origin,
+      email,
+      password,
+      projectId: project.id,
+      orderId: order.id,
+      read: (path) => api(path, token),
+      checks,
+      runEvidence,
+    });
+    passed = true;
+  } else {
+    const productId = randomUUID();
+    const facts = [
+      { id: randomUUID(), productId, key: 'name', value: 'OneBoss 联调演示' },
       {
-        env: {
-          ...process.env,
-          APP_URL: origin,
-          ...(process.platform === 'win32' ? { PLAYWRIGHT_CHANNEL: 'msedge' } : {}),
-          SMOKE_SCREENSHOT_DIR: '.cache/hosted-acceptance',
-        },
-        stdio: 'ignore',
+        id: randomUUID(),
+        productId,
+        key: 'price',
+        value: { amountMinor: 12900, currency: 'CNY', unit: '份', priceType: 'fixed' },
       },
+      {
+        id: randomUUID(),
+        productId,
+        key: 'description',
+        value: '仅用于系统验收，不是真实商品销售。',
+      },
+    ].map((f) => ({ ...f, source: 'customer', verified: true, version: 1 }));
+    const intake = await api(`core/projects/${projectId}/intake`, token, {
+      products: [
+        { id: productId, name: 'OneBoss 联调演示', description: '系统演示资料，不是真实销售。' },
+      ],
+      facts,
+      brief: {
+        projectId,
+        organizationId: orgId,
+        productIds: [productId],
+        objective: '制作明确标识的系统演示宣传，不增加商品声明。',
+        confirmedFacts: facts.map((f) => f.id),
+        assetRefs: [],
+        preferredStyles: ['editorial-minimal', 'future-tech'],
+        restrictions: ['不编造产品材质、性能、销量或真实收款。'],
+        deliverables: { site: true, posterCount: 1, xhsCopy: true },
+        approval: 'pending',
+      },
+    });
+    await api(`core/projects/${projectId}/approve-brief`, token, {
+      revision: intake.brief.revision,
+    });
+    phase = 'render-real-worker-generation';
+    const designRun = await api(`core/projects/${projectId}/design-options`, token, {});
+    const directions = await completed(designRun);
+    await api(`core/projects/${projectId}/approve-design`, token, {
+      runId: designRun.id,
+      styleId: directions.choices[0].styleId,
+    });
+    const production = await completed(await api(`core/projects/${projectId}/generate`, token, {}));
+    await api(`core/projects/${projectId}/approve-revision`, token, {
+      revision: production.artifactRevision,
+    });
+    phase = 'public-https-publication';
+    await completed(
+      await api(`core/projects/${projectId}/publish`, token, {
+        revision: production.artifactRevision,
+      }),
     );
-    const timeout = setTimeout(() => {
-      child.kill();
-      reject(new Error('PUBLIC_BROWSER_TIMEOUT'));
-    }, 120000);
-    child.once('error', () => {
-      clearTimeout(timeout);
-      reject(new Error('PUBLIC_BROWSER_START_FAILED'));
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(
+        process.execPath,
+        ['--import', 'tsx', 'scripts/smoke-public.ts', project.publish_slug],
+        {
+          env: {
+            ...process.env,
+            APP_URL: origin,
+            ...(process.platform === 'win32' ? { PLAYWRIGHT_CHANNEL: 'msedge' } : {}),
+            SMOKE_SCREENSHOT_DIR: '.cache/hosted-acceptance',
+          },
+          stdio: 'ignore',
+        },
+      );
+      const timeout = setTimeout(() => {
+        child.kill();
+        reject(new Error('PUBLIC_BROWSER_TIMEOUT'));
+      }, 120000);
+      child.once('error', () => {
+        clearTimeout(timeout);
+        reject(new Error('PUBLIC_BROWSER_START_FAILED'));
+      });
+      child.once('exit', (code) => {
+        clearTimeout(timeout);
+        code === 0 ? resolve() : reject(new Error('PUBLIC_BROWSER_FAILED'));
+      });
     });
-    child.once('exit', (code) => {
-      clearTimeout(timeout);
-      code === 0 ? resolve() : reject(new Error('PUBLIC_BROWSER_FAILED'));
+    checks.push(
+      'Render worker real MiMo production, B QA and client approval; HTTPS publication and 375/768/1280 browser evidence',
+    );
+    phase = 'private-png-zip-delivery';
+    await completed(await api(`core/projects/${projectId}/delivery`, token, {}));
+    const delivery = await api(`core/projects/${projectId}/delivery`, token);
+    manifest = delivery.manifest;
+    const response = await outboundFetch(delivery.zipDownloadUrl, {
+      signal: AbortSignal.timeout(30000),
     });
-  });
-  checks.push(
-    'Render worker real MiMo production, B QA and client approval; HTTPS publication and 375/768/1280 browser evidence',
-  );
-  phase = 'private-png-zip-delivery';
-  await completed(await api(`core/projects/${projectId}/delivery`, token, {}));
-  const delivery = await api(`core/projects/${projectId}/delivery`, token);
-  manifest = delivery.manifest;
-  const response = await outboundFetch(delivery.zipDownloadUrl, {
-    signal: AbortSignal.timeout(30000),
-  });
-  assert(response.ok, 'SIGNED_ZIP_DOWNLOAD_FAILED');
-  const bytes = Buffer.from(await response.arrayBuffer());
-  const archive = await JSZip.loadAsync(bytes);
-  assert.equal(await archive.file('site-url.txt')!.async('string'), manifest!.publicSiteUrl);
-  for (const file of manifest!.files) {
-    const entry = archive.file(file.path);
-    assert(entry, 'ZIP_ENTRY_MISSING');
-    const data = await entry.async('nodebuffer');
-    assert.equal(data.length, file.size);
-    assert.equal(hash(data), file.sha256);
+    assert(response.ok, 'SIGNED_ZIP_DOWNLOAD_FAILED');
+    const bytes = Buffer.from(await response.arrayBuffer());
+    const archive = await JSZip.loadAsync(bytes);
+    assert.equal(await archive.file('site-url.txt')!.async('string'), manifest!.publicSiteUrl);
+    for (const file of manifest!.files) {
+      const entry = archive.file(file.path);
+      assert(entry, 'ZIP_ENTRY_MISSING');
+      const data = await entry.async('nodebuffer');
+      assert.equal(data.length, file.size);
+      assert.equal(hash(data), file.sha256);
+    }
+    for (const poster of manifest!.posters)
+      await inspectPng(
+        await archive.file(poster.path)!.async('nodebuffer'),
+        poster.width,
+        poster.height,
+        manifest!.publicSiteUrl,
+        'auto_bottom_right_or_left',
+      );
+    await mkdir('.cache/hosted-acceptance', { recursive: true });
+    await writeFile('.cache/hosted-acceptance/delivery.zip', bytes);
+    await writeFile('.cache/hosted-acceptance/manifest.json', JSON.stringify(manifest, null, 2));
+    await writeFile(
+      '.cache/hosted-acceptance/poster.png',
+      await archive.file(manifest!.posters[0].path)!.async('nodebuffer'),
+    );
+    await api(`core/projects/${projectId}/accept`, token, {
+      manifestVersion: manifest!.siteRevision,
+    });
+    checks.push(
+      'real private Storage PNG/QR/copy/manifest ZIP signed download; all bytes/hashes/QR targets match; customer acceptance committed',
+    );
+    passed = true;
   }
-  for (const poster of manifest!.posters)
-    await inspectPng(
-      await archive.file(poster.path)!.async('nodebuffer'),
-      poster.width,
-      poster.height,
-      manifest!.publicSiteUrl,
-      'auto_bottom_right_or_left',
-    );
-  await mkdir('.cache/hosted-acceptance', { recursive: true });
-  await writeFile('.cache/hosted-acceptance/delivery.zip', bytes);
-  await writeFile('.cache/hosted-acceptance/manifest.json', JSON.stringify(manifest, null, 2));
-  await writeFile(
-    '.cache/hosted-acceptance/poster.png',
-    await archive.file(manifest!.posters[0].path)!.async('nodebuffer'),
-  );
-  await api(`core/projects/${projectId}/accept`, token, {
-    manifestVersion: manifest!.siteRevision,
-  });
-  checks.push(
-    'real private Storage PNG/QR/copy/manifest ZIP signed download; all bytes/hashes/QR targets match; customer acceptance committed',
-  );
-  passed = true;
 } catch (error) {
   console.error(
     JSON.stringify({
@@ -347,6 +365,7 @@ try {
             'project_entitlements',
             'projects',
             'payment_events',
+            'manual_payment_reports',
             'wechat_payments',
             'payment_attempts',
             'refunds',

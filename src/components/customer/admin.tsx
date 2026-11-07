@@ -18,6 +18,10 @@ export function AdminConsole() {
   }, []);
   useEffect(() => {
     void load();
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') void load();
+    }, 15000);
+    return () => clearInterval(timer);
   }, [load]);
   async function submit(
     event: FormEvent<HTMLFormElement>,
@@ -51,6 +55,9 @@ export function AdminConsole() {
     <>
       <span className="ob-eyebrow">OPERATIONS / VERIFIED RECORDS ONLY</span>
       <h1>服务审核</h1>
+      <button className="ob-button ob-ghost ob-small" onClick={() => void load()}>
+        刷新审核列表
+      </button>
       <p>只有已授权的平台管理员可以查看和登记结果。此页面不会代替商户平台实际收款或退款。</p>
       {error && <Notice error>{error}</Notice>}
       {message && <Notice>{message}</Notice>}
@@ -99,7 +106,9 @@ export function AdminConsole() {
           </section>
           <section className="ob-card">
             <h2>人工核验的收款记录</h2>
-            <p>仅用于客户已经走过人工核验通道的订单。普通管理员不能通过客户身份伪造到账。</p>
+            <p>
+              先核对微信真实到账、金额及付款备注，再登记核验结果。客户提交说明不会自动开放制作。
+            </p>
             {data.manualAttempts.map((a) => (
               <form
                 className="ob-form ob-card"
@@ -113,8 +122,16 @@ export function AdminConsole() {
                 }
               >
                 <p>
-                  {a.order_id} · {money(a.amount_minor)}
+                  {a.plan_name} · {money(a.amount_minor)} · 付款备注 {a.payment_memo}
                 </p>
+                <p className="ob-code">{a.order_no}</p>
+                {a.customer_report && (
+                  <Notice>
+                    客户提交信息（待核验）：{a.customer_report}
+                    <br />
+                    提交时间：{new Date(a.reported_at).toLocaleString('zh-CN')}
+                  </Notice>
+                )}
                 <label>
                   已核实的入账流水号
                   <input name="reference" required minLength={8} maxLength={200} />

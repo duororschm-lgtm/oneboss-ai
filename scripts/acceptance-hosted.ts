@@ -44,7 +44,7 @@ try {
   const plans = await api('core/plans');
   assert.equal(
     plans.plans.find((plan: { code: string }) => plan.code === 'basic').price_minor,
-    19900,
+    199,
   );
   assert.equal(plans.addons.length, 3);
   assert.equal(

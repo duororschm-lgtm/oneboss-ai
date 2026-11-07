@@ -10,6 +10,7 @@ import { approveArtifact, previewProject } from '../../../lib/publishing/service
 import { accountWorkspace, projectWorkspace, adminWorkspace } from '../../../lib/core/workspace';
 import { posterPreview } from '../../../lib/publishing/poster-preview';
 import { wechatAvailable } from '../../../lib/commerce/wechat-provider';
+import { manualPaymentDetails } from '../../../lib/commerce/manual-payment';
 import {
   createWechatCheckout,
   receiveWechatNotification,
@@ -65,7 +66,12 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
           await database()`select code,name,price_minor,entitlement from service_addons where is_active`,
       });
     if (route === 'commerce/payment-methods' && method === 'GET')
-      return response({ wechatNative: wechatAvailable(), manualVerified: false, sandbox: false });
+      return response({
+        wechatNative: wechatAvailable(),
+        manualVerified: !!manualPaymentDetails(),
+        manual: manualPaymentDetails(),
+        sandbox: false,
+      });
     if (route === 'commerce/payments/webhook/wechat' && method === 'POST') {
       await receiveWechatNotification(
         request.headers,
@@ -150,7 +156,14 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
         adminAction ? service.adminOrder(tx, actor, id) : service.order(tx, actor, id),
       );
       orgId = o.org_id;
-      if (method === 'GET' && path.length === 3) return response(o);
+      if (method === 'GET' && path.length === 3) {
+        const report = await transaction(actor, async (tx) => {
+          const [r] =
+            await tx`select id,details,created_at from manual_payment_reports where order_id=${id} and org_id=${o.org_id} order by created_at desc limit 1`;
+          return r;
+        });
+        return response({ ...o, manualPaymentReport: report });
+      }
     }
     if (route === 'core/projects' && method === 'POST') {
       const input = z.object({ orderId: Id }).strict().parse(body);
@@ -334,6 +347,13 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
                 .strict()
                 .parse(body);
               return service.checkout(tx, actor, id, b.channel);
+            }
+            if (action === 'report-manual-payment') {
+              const b = z
+                .object({ attemptId: Id, details: z.string().trim().min(1).max(1000) })
+                .strict()
+                .parse(body);
+              return service.reportManualPayment(tx, actor, id, b.attemptId, b.details);
             }
             if (action === 'confirm-sandbox' || action === 'confirm-manual')
               return service.confirmPayment(

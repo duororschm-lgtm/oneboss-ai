@@ -27,6 +27,7 @@ npm run worker
 - [A/B 接口合同与接入说明](docs/PROJECT_CONTRACT.md)
 - [配置、启动、故障恢复与验收](docs/RUNBOOK.md)
 - [Windows 本地凭据填写](docs/LOCAL_SETUP_WINDOWS.md)
+- [人工核验微信收款](docs/MANUAL_PAYMENT.md)
 - [微信商户私下配置](docs/WECHAT_SETUP.md)
 - [外部注册发信配置](docs/EMAIL_SETUP.md)
 - [A 后端 Docker / Render 开发部署](docs/DEPLOY_RENDER.md)
@@ -57,5 +58,5 @@ npm run smoke:public -- <published-slug>
 ## 支付边界
 
 `ALLOW_SANDBOX=true` 仅用于明确标记 `isDemo=true` 的演示订单。未配置正式支付通道，Webhook 一律拒绝。
-真实人工核验必须由数据库中显式登记的 `platform_admins` 成员执行，并分配对应组织成员权限；普通客户的 owner/admin 角色不具备收款确认权限。
+真实人工核验必须由数据库中显式登记的 `platform_admins` 成员执行；普通客户的 owner/admin 角色不具备收款确认权限。
 没有实际入账依据不得调用人工确认。退款申请不等于退款到账。

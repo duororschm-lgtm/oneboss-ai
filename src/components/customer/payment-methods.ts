@@ -1,20 +1,33 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { requestCustomerJSON } from '../../lib/customer/request';
+export type PaymentMethods = {
+  wechatNative: boolean;
+  manualVerified: boolean;
+  manual?: { qrUrl: string; payeeDisplayName: string; instructions: string };
+  ready: boolean;
+};
 export function usePaymentMethods() {
-  const [value, setValue] = useState<{ wechatNative: boolean; ready: boolean }>({
+  const [value, setValue] = useState<PaymentMethods>({
     wechatNative: false,
     ready: false,
+    manualVerified: false,
   });
   useEffect(() => {
     const abort = new AbortController();
-    void fetch('/api/commerce/payment-methods', { signal: abort.signal })
-      .then(async (r) => {
-        if (!r.ok) throw Error();
-        const data = await r.json();
-        setValue({ wechatNative: data.wechatNative === true, ready: true });
+    void requestCustomerJSON('/api/commerce/payment-methods', { signal: abort.signal })
+      .then(({ response, value: data }) => {
+        if (!response.ok) throw Error();
+        setValue({
+          wechatNative: data.wechatNative === true,
+          manualVerified: data.manualVerified === true,
+          manual: data.manual,
+          ready: true,
+        });
       })
       .catch(() => {
-        if (!abort.signal.aborted) setValue({ wechatNative: false, ready: true });
+        if (!abort.signal.aborted)
+          setValue({ wechatNative: false, manualVerified: false, ready: true });
       });
     return () => abort.abort();
   }, []);

@@ -72,6 +72,7 @@ try {
         DATABASE_PASSWORD: '',
         APP_URL: 'https://oneboss.example',
         CREATIVE_ADAPTER_MODULE: 'builtin:b',
+        MANUAL_PAYMENT_ENABLED: 'true',
       },
     },
   );
@@ -163,15 +164,31 @@ try {
   await page.getByRole('button', { name: '创建服务订单 →', exact: true }).click();
   await page.waitForURL('**/dashboard/orders/*');
   await page.getByRole('heading', { name: '订单详情', exact: true }).waitFor();
+  await page.getByRole('button', { name: '查看微信收款码，按金额付款', exact: true }).click();
+  await page.getByRole('img', { name: '微信收款码，收款人 39(**宇)', exact: true }).waitFor();
+  await page.getByLabel('付款说明', { exact: true }).fill('隔离浏览器验收，未发生真实付款。');
+  await page.getByRole('checkbox', { name: '我已按订单金额付款', exact: false }).check();
+  await page.getByRole('button', { name: '我已付款，提交人工核验', exact: true }).click();
   await page
-    .getByText('在线商户支付尚未开通，此订单未扣费。开通后可继续付款。', { exact: true })
+    .getByText('付款说明已提交，等待人工核验真实到账；订单尚未确认付款。', { exact: false })
     .waitFor();
   await page.reload();
   await page.getByRole('heading', { name: '订单详情', exact: true }).waitFor();
   const [order] =
     await db`select * from service_orders where org_id in(select id from organizations where owner_user_id=${userId})`;
-  assert(order && order.pay_state === 'UNPAID', 'REAL_UNPAID_ORDER_REQUIRED');
-  assert.equal(order.amount_minor, 29800, 'SERVER_ADDON_TOTAL');
+  assert(
+    order && order.pay_state === 'PENDING_CONFIRMATION',
+    'MANUAL_CLAIM_MUST_NOT_GRANT_PAYMENT',
+  );
+  assert.equal(
+    (await db`select count(*)::int n from project_entitlements where order_id=${order.id}`)[0].n,
+    0,
+  );
+  assert.equal(
+    (await db`select count(*)::int n from manual_payment_reports where order_id=${order.id}`)[0].n,
+    1,
+  );
+  assert.equal(order.amount_minor, 10099, 'SERVER_ADDON_TOTAL');
   assert.equal(order.plan_snapshot.poster_count, 3, 'SERVER_ADDON_ENTITLEMENT');
   // Isolated DB fixture entitlement, explicitly changed to demo; never impersonates live payment.
   await db`update service_orders set is_demo=true,pay_state='PAID' where id=${order.id}`;

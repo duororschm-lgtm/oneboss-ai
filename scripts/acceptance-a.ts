@@ -56,7 +56,13 @@ function start(args: string[]) {
   return child;
 }
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-async function api(path: string, token?: string, body?: unknown, key: string = randomUUID(), status = 200) {
+async function api(
+  path: string,
+  token?: string,
+  body?: unknown,
+  key: string = randomUUID(),
+  status = 200,
+) {
   const response = await fetch(`${origin}/api/${path}`, {
     method: body === undefined ? 'GET' : 'POST',
     headers: {
@@ -154,7 +160,7 @@ try {
   await api('commerce/quotes', owner, { ...quoteBody, amountMinor: 0 }, undefined, 400);
   const key = randomUUID();
   const quote = await api('commerce/quotes', owner, quoteBody, key);
-  assert.equal(quote.amount_minor, 19900);
+  assert.equal(quote.amount_minor, 199);
   assert.equal((await api('commerce/quotes', owner, quoteBody, key)).id, quote.id);
   await api('commerce/quotes', owner, { ...quoteBody, planCode: 'professional' }, key, 409);
   const order = await api('commerce/orders', owner, {
@@ -171,7 +177,7 @@ try {
   const payment = {
     attemptId: checkout.attempt.id,
     eventId: randomUUID(),
-    amountMinor: 19900,
+    amountMinor: 199,
     currency: 'CNY',
     evidenceRef: 'local-disposable-acceptance',
   };

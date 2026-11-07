@@ -7,10 +7,12 @@ SELECT pg_advisory_xact_lock(601106);
 DO $oneboss_bootstrap$
 BEGIN
   IF to_regclass('public.oneboss_migrations') IS NOT NULL THEN
-    IF (SELECT count(*) FROM public.oneboss_migrations) = 3
+    IF (SELECT count(*) FROM public.oneboss_migrations) = 5
       AND (SELECT count(*) FROM public.oneboss_migrations WHERE (name,hash) IN (('202611060001_core.sql', 'a5f7aa3f082199eff29f34dfbc9b57b5a7076fc8521796bb22b85d194b25022b'),
 ('202611060002_storage.sql', '25b1e899076bc41ac08ffa69a93889f69bc74543de71ddafe33369e065bfaf4d'),
-('202611070001_wechat_pay.sql', '2226c42a85f681abe10f73b8df62431cd9fa383d51757afb04634a547355c638'))) = 3
+('202611070001_wechat_pay.sql', '2226c42a85f681abe10f73b8df62431cd9fa383d51757afb04634a547355c638'),
+('202611070002_service_pricing.sql', 'c6896260fd71cc32cca8c90c59810322ed4d64cfe3e6dcc403f5985559799862'),
+('202611070003_manual_payment_reports.sql', 'd634e669f15daa8e1bebc998c8c5aa630743ef27856398ed06fa250dbe425620'))) = 5
       AND to_regclass('public.organizations') IS NOT NULL
       AND to_regclass('public.deliveries') IS NOT NULL THEN
       RAISE NOTICE 'OneBoss migrations already applied; existing data retained';
@@ -124,6 +126,30 @@ revoke all on wechat_payments from anon,authenticated;
 -- Only trusted server handlers can create or reconcile sessions. Account API returns safe fields.
 create index wechat_payments_order on wechat_payments(order_id);
 
+
+-- Migration: 202611070002_service_pricing.sql; sha256: c6896260fd71cc32cca8c90c59810322ed4d64cfe3e6dcc403f5985559799862
+-- Owner-requested catalogue prices: CNY 1.99 basic / 5.99 professional.
+-- Existing quotes/orders retain their immutable amount and plan snapshots.
+update service_plans set price_minor=199 where code='basic';
+update service_plans set price_minor=599 where code='professional';
+
+
+-- Migration: 202611070003_manual_payment_reports.sql; sha256: d634e669f15daa8e1bebc998c8c5aa630743ef27856398ed06fa250dbe425620
+create table manual_payment_reports(
+ id uuid primary key default gen_random_uuid(),
+ org_id uuid not null references organizations(id),
+ order_id uuid not null references service_orders(id),
+ attempt_id uuid not null references payment_attempts(id),
+ user_id uuid not null,
+ details text not null check(char_length(details) between 1 and 1000),
+ created_at timestamptz not null default now()
+);
+alter table manual_payment_reports enable row level security;
+revoke all on manual_payment_reports from anon,authenticated;
+create policy member_read on manual_payment_reports for select to authenticated using(public.is_org_member(org_id));
+grant select on manual_payment_reports to authenticated;
+create index manual_payment_reports_order on manual_payment_reports(order_id,created_at desc);
+
   CREATE TABLE public.oneboss_migrations (
     name text PRIMARY KEY, hash text NOT NULL,
     applied_at timestamptz NOT NULL DEFAULT now()
@@ -132,7 +158,9 @@ create index wechat_payments_order on wechat_payments(order_id);
   REVOKE ALL ON public.oneboss_migrations FROM anon, authenticated;
   INSERT INTO public.oneboss_migrations(name,hash) VALUES ('202611060001_core.sql', 'a5f7aa3f082199eff29f34dfbc9b57b5a7076fc8521796bb22b85d194b25022b'),
 ('202611060002_storage.sql', '25b1e899076bc41ac08ffa69a93889f69bc74543de71ddafe33369e065bfaf4d'),
-('202611070001_wechat_pay.sql', '2226c42a85f681abe10f73b8df62431cd9fa383d51757afb04634a547355c638');
+('202611070001_wechat_pay.sql', '2226c42a85f681abe10f73b8df62431cd9fa383d51757afb04634a547355c638'),
+('202611070002_service_pricing.sql', 'c6896260fd71cc32cca8c90c59810322ed4d64cfe3e6dcc403f5985559799862'),
+('202611070003_manual_payment_reports.sql', 'd634e669f15daa8e1bebc998c8c5aa630743ef27856398ed06fa250dbe425620');
 END
 $oneboss_bootstrap$;
 NOTIFY pgrst, 'reload schema';

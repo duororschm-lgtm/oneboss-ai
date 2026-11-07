@@ -1,6 +1,7 @@
 'use client';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { createClient, type SupabaseClient, type Session } from '@supabase/supabase-js';
+import {requestCustomerJSON} from '../../lib/customer/request';
 
 let client: SupabaseClient | undefined;
 let publicConfig: { url?: string; key?: string; emailReady?: boolean } | undefined;
@@ -110,14 +111,13 @@ export async function customerApi<T = any>(
     headers.set('Content-Type', 'application/json');
     headers.set('Idempotency-Key', crypto.randomUUID());
   }
-  const response = await fetch(`/api/${path}`, {
+  const {response,value} = await requestCustomerJSON(`/api/${path}`, {
     ...options,
     method: body === undefined ? 'GET' : 'POST',
     headers,
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     cache: 'no-store',
   });
-  const value = await response.json();
   if (!response.ok)
     throw new CustomerError(value.error?.code || 'REQUEST_FAILED', value.error?.requestId);
   return value;

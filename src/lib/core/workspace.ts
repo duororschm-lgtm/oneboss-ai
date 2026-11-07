@@ -23,7 +23,7 @@ export async function adminWorkspace(tx: Tx, actor: Actor) {
     refunds:
       await tx`select r.id,r.order_id,r.amount_minor,r.status,r.created_at,r.provider_ref,o.order_no,o.plan_snapshot->>'name' as plan_name from refunds r join service_orders o on o.id=r.order_id order by r.created_at desc limit 100`,
     manualAttempts:
-      await tx`select a.id,a.order_id,a.amount_minor,a.created_at from payment_attempts a join service_orders o on o.id=a.order_id where a.provider='manual_verified' and a.status='PENDING' and o.pay_state='PENDING_CONFIRMATION' order by a.created_at desc limit 100`,
+      await tx`select a.id,a.order_id,a.amount_minor,a.created_at,o.order_no,o.plan_snapshot->>'name' as plan_name,left(o.id::text,8) as payment_memo,r.details as customer_report,r.created_at as reported_at from payment_attempts a join service_orders o on o.id=a.order_id left join lateral(select details,created_at from manual_payment_reports where attempt_id=a.id order by created_at desc limit 1) r on true where a.provider='manual_verified' and a.status='PENDING' and o.pay_state='PENDING_CONFIRMATION' order by a.created_at desc limit 100`,
   };
 }
 

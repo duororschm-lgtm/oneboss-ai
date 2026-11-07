@@ -1,6 +1,7 @@
 import { lookup } from 'node:dns/promises';
 import postgres from 'postgres';
 import { databaseConfig } from '../../src/lib/core/database-config';
+import { databaseTunnel } from './database-tunnel';
 
 /** Fresh bounded connections for operator-only acceptance/cleanup over unreliable local TCP. */
 export async function nativeCheck<T>(
@@ -9,6 +10,7 @@ export async function nativeCheck<T>(
   const config = databaseConfig(),
     target = new URL(config.url);
   const addresses = await lookup(target.hostname, { all: true });
+  const proxy = process.env.DATABASE_HTTP_PROXY;
   for (let attempt = 0; attempt < 4; attempt++) {
     const override =
       attempt > 0 && config.options.ssl && addresses.length
@@ -26,6 +28,16 @@ export async function nativeCheck<T>(
       ...override,
       max: 1,
       connect_timeout: 10,
+      ...(proxy
+        ? {
+            socket: () => databaseTunnel(target, proxy),
+            ssl: {
+              ...(typeof config.options.ssl === 'object' ? config.options.ssl : {}),
+              servername: target.hostname,
+              rejectUnauthorized: true,
+            },
+          }
+        : {}),
     });
     try {
       return await fn(sql);

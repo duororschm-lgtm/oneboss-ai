@@ -82,6 +82,14 @@ export function Checkout() {
             </span>
           </div>
           <p>包含交互宣传网站、二维码、小红书配套文案与 ZIP 交付包。</p>
+          <fieldset className="ob-card" style={{ marginTop: 20 }}>
+            <legend>支付方式</legend>
+            <label className="ob-check">
+              <input type="radio" name="paymentMethod" value="manual_verified" checked readOnly />
+              微信收款码 · 人工核验 {methods.manualVerified ? '' : '（配置中）'}
+            </label>
+            <p className="ob-muted">付款后提交付款说明，管理员核对真实到账后开放制作。</p>
+          </fieldset>
           {addons.length > 0 && (
             <div className="ob-form">
               <h3>按需加购</h3>
@@ -110,7 +118,11 @@ export function Checkout() {
           )}
           <Notice>
             这是制作服务订单。创建订单不会扣费。
-            {methods.wechatNative ? '下一步可用微信扫一扫支付。' : '真实支付尚待商户开通。'}
+            {methods.manualVerified
+              ? '下一步可查看微信收款码，按订单金额付款。'
+              : methods.wechatNative
+                ? '下一步可用微信扫一扫支付。'
+                : '收款方式正在配置。'}
             最后金额以保存的订单为准。
           </Notice>
           <label className="ob-check">

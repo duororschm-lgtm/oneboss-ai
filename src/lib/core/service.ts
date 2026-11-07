@@ -168,8 +168,13 @@ export async function checkout(tx: Tx, actor: Actor, id: string, channel: string
     403,
   );
   assert(channel !== 'manual_verified' || !o.is_demo, 'DEMO_REQUIRES_SANDBOX');
-  const [attempt] =
-    await tx`insert into payment_attempts(org_id,order_id,provider,amount_minor) values(${o.org_id},${o.id},${channel},${o.amount_minor}) returning *`;
+  const [existing] =
+    await tx`select * from payment_attempts where order_id=${o.id} and provider=${channel} and status='PENDING' order by created_at desc limit 1`;
+  const attempt =
+    existing ||
+    (
+      await tx`insert into payment_attempts(org_id,order_id,provider,amount_minor) values(${o.org_id},${o.id},${channel},${o.amount_minor}) returning *`
+    )[0];
   await tx`update service_orders set pay_state='PENDING_CONFIRMATION' where id=${o.id}`;
   return {
     attempt,
@@ -178,6 +183,28 @@ export async function checkout(tx: Tx, actor: Actor, id: string, channel: string
       channel === 'sandbox'
         ? '模拟支付，不产生真实收款'
         : '等待管理员核对真实入账；上传截图不能自行确认付款',
+  };
+}
+export async function reportManualPayment(
+  tx: Tx,
+  actor: Actor,
+  id: string,
+  attemptId: string,
+  details: string,
+) {
+  const o = await order(tx, actor, id);
+  assert(!o.is_demo, 'DEMO_REQUIRES_SANDBOX');
+  assert(o.pay_state === 'PENDING_CONFIRMATION', 'PAYMENT_NOT_PENDING', 409);
+  const [attempt] =
+    await tx`select id from payment_attempts where id=${Id.parse(attemptId)} and order_id=${o.id} and provider='manual_verified' and status='PENDING'`;
+  assert(attempt, 'ATTEMPT_MISSING');
+  const [report] =
+    await tx`insert into manual_payment_reports(org_id,order_id,attempt_id,user_id,details) values(${o.org_id},${o.id},${attempt.id},${actor.userId},${details}) returning id,created_at`;
+  return {
+    reportId: report.id,
+    createdAt: report.created_at,
+    payState: 'PENDING_CONFIRMATION',
+    instructions: '已提交付款说明，等待管理员核对真实到账；尚未确认付款。',
   };
 }
 export const Confirmation = z

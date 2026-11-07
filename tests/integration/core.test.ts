@@ -69,18 +69,21 @@ describe.sequential('real PostgreSQL business invariants', () => {
     const q = await transaction(owner, (tx) => core.createQuote(tx, orgId, 'basic'));
     const o = await transaction(owner, (tx) => core.createOrder(tx, orgId, q.id, true));
     orderId = o.id;
-    expect(o.amount_minor).toBe(19900);
-    await db`update service_plans set price_minor=29900 where code='basic'`;
+    expect(o.amount_minor).toBe(199);
+    expect(
+      (await db`select price_minor from service_plans where code='professional'`)[0].price_minor,
+    ).toBe(599);
+    await db`update service_plans set price_minor=299 where code='basic'`;
     const saved = await transaction(owner, (tx) => core.order(tx, owner, orderId));
-    expect(saved.amount_minor).toBe(19900);
-    expect(saved.plan_snapshot.price_minor).toBe(19900);
+    expect(saved.amount_minor).toBe(199);
+    expect(saved.plan_snapshot.price_minor).toBe(199);
   });
   it('SQL Editor bootstrap is repeatable and preserves business data and migration hashes', async () => {
     await applyBootstrap();
     const [saved] = await db`select amount_minor from service_orders where id=${orderId}`;
-    expect(saved.amount_minor).toBe(19900);
+    expect(saved.amount_minor).toBe(199);
     const [plan] = await db`select price_minor from service_plans where code='basic'`;
-    expect(plan.price_minor).toBe(29900);
+    expect(plan.price_minor).toBe(299);
     const history = await db`select name,hash from oneboss_migrations order by name`;
     expect(history.map((m) => m.name).sort()).toEqual(
       (await readdir('supabase/migrations')).filter((n) => n.endsWith('.sql')).sort(),
@@ -98,7 +101,7 @@ describe.sequential('real PostgreSQL business invariants', () => {
     const q = await transaction(owner, (tx) =>
       core.createQuote(tx, orgId, 'basic', [{ code: 'extra-poster', qty: 2 }]),
     );
-    expect(q.amount_minor).toBe(49700);
+    expect(q.amount_minor).toBe(20099);
     expect(q.plan_snapshot.poster_count).toBe(4);
     const o = await transaction(owner, (tx) => core.createOrder(tx, orgId, q.id, true));
     const items = await db`select * from service_order_items where order_id=${o.id}`;
@@ -173,7 +176,7 @@ describe.sequential('real PostgreSQL business invariants', () => {
     const input = {
       attemptId,
       eventId: 'sandbox-event-1',
-      amountMinor: 19900,
+      amountMinor: 199,
       currency: 'CNY' as const,
       evidenceRef: 'sandbox-test',
     };
@@ -470,6 +473,40 @@ describe.sequential('real PostgreSQL business invariants', () => {
       if (previousOrigin) process.env.APP_URL = previousOrigin;
       else delete process.env.APP_URL;
     }
+  });
+  it('keeps reported manual payments pending until a platform reviewer confirms real receipt', async () => {
+    const q = await transaction(owner, (tx) => core.createQuote(tx, orgId, 'basic'));
+    const o = await transaction(owner, (tx) => core.createOrder(tx, orgId, q.id, false));
+    const attempt = await transaction(owner, (tx) =>
+      core.checkout(tx, owner, o.id, 'manual_verified'),
+    );
+    const duplicate = await transaction(owner, (tx) =>
+      core.checkout(tx, owner, o.id, 'manual_verified'),
+    );
+    expect(duplicate.attempt.id).toBe(attempt.attempt.id);
+    await expect(
+      transaction(stranger, (tx) =>
+        core.reportManualPayment(tx, stranger, o.id, attempt.attempt.id, 'forged claim'),
+      ),
+    ).rejects.toThrow('FORBIDDEN');
+    const claimed = await transaction(owner, (tx) =>
+      core.reportManualPayment(
+        tx,
+        owner,
+        o.id,
+        attempt.attempt.id,
+        'isolated fixture: no real payment; reference1234',
+      ),
+    );
+    expect(claimed.payState).toBe('PENDING_CONFIRMATION');
+    expect((await transaction(owner, (tx) => core.order(tx, owner, o.id))).pay_state).toBe(
+      'PENDING_CONFIRMATION',
+    );
+    expect(await db`select * from project_entitlements where order_id=${o.id}`).toHaveLength(0);
+    const review = await transaction(staff, (tx) => adminWorkspace(tx, staff));
+    expect(review.manualAttempts.find((a) => a.order_id === o.id)?.customer_report).toContain(
+      'no real payment',
+    );
   });
   it('requires platform staff, not customer owner, for real manual payment', async () => {
     const q = await transaction(owner, (tx) => core.createQuote(tx, orgId, 'professional'));
@@ -902,7 +939,7 @@ describe.sequential('real PostgreSQL business invariants', () => {
     }
   });
   it('refund request revokes production but is not a completed refund', async () => {
-    const refund = await transaction(owner, (tx) => core.requestRefund(tx, owner, orderId, 19900));
+    const refund = await transaction(owner, (tx) => core.requestRefund(tx, owner, orderId, 199));
     expect(refund.status).toBe('REQUESTED');
     expect((await transaction(owner, (tx) => core.order(tx, owner, orderId))).pay_state).toBe(
       'REFUND_PENDING',
