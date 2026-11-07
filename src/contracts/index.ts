@@ -287,7 +287,14 @@ export const IntakeResult = z
     warnings: z.array(z.string().max(500)),
   })
   .strict();
-export const DesignChoices = z.object({ choices: z.array(DesignSystem).min(2).max(3) }).strict();
+export const DesignChoices = z
+  .object({
+    choices: z.array(DesignSystem).min(2).max(3),
+    // runner 在任务输出里附带的多样性校验记录（服务端自己写的），不是客户数据。
+    // 解析时必须容忍，否则批准设计会被误判为 VALIDATION_FAILED。
+    distinctness: z.unknown().optional(),
+  })
+  .strict();
 // Model-facing design contract. approvedByClient and factVersion are bookkeeping the
 // runner stamps server-side after validation (same rule as directionId): they appear
 // here as optional unknowns so whatever the model emits for them is accepted and then
