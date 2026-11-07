@@ -148,3 +148,10 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# 本地调试产物（一次性脚本、截图、临时导出）
+/_*.mjs
+/_*.js
+/_*.json
+/_*.py
+/_shot/
