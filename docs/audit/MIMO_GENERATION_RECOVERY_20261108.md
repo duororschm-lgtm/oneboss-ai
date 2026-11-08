@@ -9,7 +9,7 @@
 - 旧generate `7d9d5d9d...`：3次尝试后MIMO_INVALID_JSON，旧代码未保存finish_reason和失败usage，不能断言这一条一定截断。
 - 新generate `24f0c766...`：检查初期仍RUNNING，随后3次尝试后INVALID_TEXT_REF；此时JSON已能解析，但poster.textRefs不属于允许的已确认事实或copy包ID。不是公网发布失败，也不是已交付作品丢失。
 - 原先项目状态仍GENERATION_FAILED而新run正在执行，容易与旧失败混淆。
-- 本轮未修改该生产项目、未新增重跑任务、未扣权益、未确认收款或启动第二个生产Worker。
+- 初始诊断阶段仅只读查询，未新增重跑任务或修改项目；后续上线后的受控恢复单列在下文。未扣权益或确认收款，也未启动并行的第二个生产 Worker。
 
 ## 本地真实复现
 
@@ -30,8 +30,23 @@
 
 ## 验证和上线边界
 
-类型检查通过；223项单元测试、44项真实PostgreSQL集成回归通过。新增覆盖完成预算参数、截断/过滤/重复终止、完整围栏、部分JSON拒绝、安全诊断落库、重试反馈和无效文字引用拒绝。
+类型检查和生产构建通过；223项单元测试、44项真实PostgreSQL集成回归通过。新增覆盖完成预算参数、截断/过滤/重复终止、完整围栏、部分JSON拒绝、安全诊断落库、重试反馈和无效文字引用拒绝。
 
-本地真实设计已跑通；独立BlackCode DEMO继续验证4张海报的完整生成与交付。生产需要同版Web/Worker更新后再验证；当前会话没有DevBox终端/SSH连接，推送GitHub不等于上线。应先核实实际运行SHA/活动任务，当前任务已终态后再切换；保留已批准的事实和设计，不重做产品分析或修改真实到账。
+本地真实设计、制作、4张海报、公开网站、ZIP交付均跑通，另见[本地真实交付报告](LOCAL_REAL_DELIVERY_20261108.md)。
+
+## DevBox 已部署与原项目恢复结果
+
+- 所有者提供 SSH 入口后，核实旧运行版本为 `7cad654`，无活动任务再进行切换。SSH 私钥在仓库外私有目录保管，未写入报告或 Git。
+- 修复提交 `c136328da940e1f949d25588e3d962e7c4d1bb87` 已直接推送 main；GitHub CI [42447501431](https://github.com/duororschm-lgtm/oneboss-ai/actions/runs/42447501431) 全部成功，包括真实浏览器回归。
+- DevBox 拉取 GitHub 失败，改以 SSH 传输同提交 Git bundle 并核对提交。独立 release 目录 `/home/devbox/oneboss-releases/c136328` 构建通过后，正常停止旧服务，启动同版 Web/Worker；保留原 `.env.local` 及未跟踪 `public/showcase`。无数据库迁移。
+- 运行 Node v22.23.4；Web 与 Worker 的实际进程 cwd 均为该 release。Worker 注册 version=`c136328`；旧 Worker 已正常记录 stopped_at。公网 `/api/health` 返回 200，数据库/Auth/MiMo/creative 均已配置。
+- 经核实已授权 owner 管理员身份，使用仅针对该项目和指定失败任务的维护脚本恢复：事务锁、稳定幂等键、权益有效、事实版本3、设计和资料已批准、无活动任务、无 artifact 和未超预算都必须满足。重跑同时追加 `maintenance.retry_generation` 管理审计；保留旧失败事件，不修改付款、权益和审批。
+- 新任务 `84e7291c-fb43-4e98-a0d1-b12a044584d1` **SUCCEEDED，attempt=1**；项目 **QA_REVIEW**；作品 **revision=1 / DRAFT / fact_version=3**。没有自动批准或发布真实客户作品，接下来由客户查看预览并批准。
+
+### 维护位置与回退边界
+
+当前服务日志 `/home/devbox/service-c136328.log`；构建日志 `/home/devbox/build-c136328.log`；服务父进程 PID 文件 `/home/devbox/service-c136328.pid`。环境配置继续引用原仓库的私有文件。默认仓库也同步修复源代码并准备构建，当前实际运行目录以以上 release 为准；本次未修改 DevBox 控制台的开机入口。
+
+回退应先停止新增任务、确认 Worker 空闲，再切换到旧版本的独立构建并正常启动单一 Web/Worker，不能同时启动两个服务或在运行目录覆盖 `.next`。本次无数据库结构变更，回退代码不需要回滚迁移；保留已生成数据与审计记录。
 
 参考：[MiMo官方API](https://mimo.mi.com/docs/en-US/api/chat)、[思考模式与总输出预算](https://mimo.mi.com/docs/en-US/quick-start/usage-guide/other/deep-thinking)。max_completion_tokens覆盖思考与最终输出，finish_reason=length表示达到长度限制。
