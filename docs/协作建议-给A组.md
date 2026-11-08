@@ -38,7 +38,7 @@ DevBox 生产      = becd6f8
 正确做法：
 
 ```bash
-git checkout feat/core
+git checkout main          # 分支已统一为 main，feat/core 已删除
 git pull --ff-only
 git checkout -b feat/你的新功能      # 从这里开，不要从旧分支开
 ```

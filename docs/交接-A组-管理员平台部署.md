@@ -17,7 +17,7 @@
 
 ```bash
 git fetch origin
-git checkout feat/core
+git checkout main
 git pull --ff-only
 git log -1 --oneline
 # 期望：65dadf7 refactor(customer): retire in-portal admin page, /admin is the only admin entry
