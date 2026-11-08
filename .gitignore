@@ -155,3 +155,9 @@ vite.config.ts.timestamp-*
 /_*.json
 /_*.py
 /_shot/
+
+# 本地工具与参考资料（不属于项目代码，不要提交）
+.claude/
+.idea/
+data/
+package-lock.local-backup.json
