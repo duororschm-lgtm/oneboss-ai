@@ -1,0 +1,239 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><style>
+@page { size: A4 landscape; margin: 0; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "Microsoft YaHei","PingFang SC",system-ui,sans-serif; background:#fff; color:#1b1b17; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.page { width: 297mm; height: 210mm; padding: 15mm 18mm; page-break-after: always; position: relative; overflow: hidden; background:#f7f4ec; display:flex; flex-direction:column; }
+.page:last-child { page-break-after: auto; }
+.eyebrow { font-size: 9pt; letter-spacing: .24em; color:#8a8b7d; text-transform: uppercase; }
+h1 { font-size: 30pt; line-height:1.1; letter-spacing:-.01em; margin: 4mm 0 3mm; }
+h2 { font-size: 17pt; margin-bottom: 3mm; }
+h3 { font-size: 11pt; margin-bottom: 2mm; }
+p, li { font-size: 9.5pt; line-height: 1.65; color:#3d3e35; }
+.lead { font-size: 12pt; color:#55564b; line-height:1.6; }
+.muted { color:#7c7d71; font-size: 8.5pt; }
+.grid2 { display:grid; grid-template-columns: 1fr 1fr; gap: 8mm; }
+.grid3 { display:grid; grid-template-columns: repeat(3,1fr); gap: 6mm; }
+.grid4 { display:grid; grid-template-columns: repeat(4,1fr); gap: 5mm; }
+.card { background:#fffdf7; border:1px solid #d9d5c6; border-radius:2mm; padding: 5mm; }
+.card.accent { background:#fdf7ea; border-color:#e3cfa4; }
+.card.green { background:#eef4ea; border-color:#cddfc6; }
+.num { font-family: Georgia, serif; font-size: 22pt; color:#c08a2e; line-height:1; }
+.stat { font-family: Georgia, serif; font-size: 20pt; line-height:1.1; }
+.k { font-size:8pt; letter-spacing:.14em; color:#8a8b7d; text-transform:uppercase; }
+table { width:100%; border-collapse: collapse; font-size: 8.8pt; }
+th { text-align:left; font-weight:650; color:#55564b; border-bottom:1px solid #c9c5b6; padding: 2mm 2mm; font-size:8.3pt; letter-spacing:.04em; }
+td { border-bottom:1px solid #e6e2d4; padding: 2mm; color:#3d3e35; vertical-align: top; }
+td.mono, .mono { font-family: Consolas, monospace; font-size:8pt; color:#6c6d61; }
+.shot { width:100%; border:1px solid #d9d5c6; border-radius:2mm; display:block; object-fit: cover; object-position: top center; }
+.foot { position:absolute; left:18mm; right:18mm; bottom:9mm; display:flex; justify-content:space-between; font-size:8pt; color:#9a9b8c; border-top:1px solid #e0dccd; padding-top:2.5mm; }
+.tag { display:inline-block; font-size:8pt; border:1px solid #cddfc6; background:#e8f0e4; color:#2f6a4f; border-radius:1mm; padding:.6mm 2mm; margin-right:1.5mm; }
+.tag.amber { border-color:#e3cfa4; background:#fdf0d9; color:#8a6114; }
+.rule { height:1px; background:#dedac9; margin: 4mm 0; }
+ul { padding-left: 4.5mm; } li { margin-bottom: 1.2mm; }
+.two-col-text { column-count: 2; column-gap: 8mm; }
+</style></head><body>
+
+<!-- 1 封面 -->
+<section class="page" style="justify-content:center;">
+  <div class="eyebrow">AI 赛道 · 项目提交材料</div>
+  <h1 style="font-size:46pt; margin-top:6mm;">OneBoss</h1>
+  <p class="lead" style="max-width:180mm; margin-top:2mm;">一个能自主运转的 AI 创意生产组织：客户只提供产品资料，5 个 AI 员工分工完成设计方向、交互宣传网站、海报与文案，人类只在 4 个决策关口签字。</p>
+  <div class="rule" style="margin:9mm 0;"></div>
+  <div class="grid3">
+    <div><div class="k">产品体验</div><p class="mono" style="font-size:9pt; color:#3d3e35;">cwforsetsryx.sealoshzh.site</p></div>
+    <div><div class="k">代码仓库</div><p class="mono" style="font-size:9pt; color:#3d3e35;">github.com/duororschm-lgtm/oneboss-ai</p></div>
+    <div><div class="k">提交日期</div><p style="font-size:9pt; color:#3d3e35;">2026 年 11 月 8 日</p></div>
+  </div>
+  <div class="foot"><span>OneBoss · AI 创意生产组织</span><span>BlackCode</span></div>
+</section>
+
+<!-- 2 项目背景 -->
+<section class="page">
+  <div class="eyebrow">01 / 项目背景</div>
+  <h2 style="margin-top:3mm;">小商家需要的不是一张图，是一整套能发出去的物料。</h2>
+  <p class="lead" style="max-width:250mm;">一个产品要卖出去，至少需要四样东西：能扫码打开的网站、能发朋友圈的海报、配上平台的文案、能交付的打包文件。而小商家手里只有产品照片和一句口语化的介绍。</p>
+  <div class="grid4" style="margin-top:8mm;">
+    <div class="card"><div class="num">3000–8000</div><div class="k" style="margin-top:2mm;">元 / 一套物料</div><p class="muted" style="margin-top:1mm;">外包报价</p></div>
+    <div class="card"><div class="num">2–3</div><div class="k" style="margin-top:2mm;">周 / 交付周期</div><p class="muted" style="margin-top:1mm;">含来回沟通</p></div>
+    <div class="card"><div class="num">3</div><div class="k" style="margin-top:2mm;">个岗位</div><p class="muted" style="margin-top:1mm;">设计 + 文案 + 前端</p></div>
+    <div class="card accent"><div class="num">5–10</div><div class="k" style="margin-top:2mm;">分钟 / OneBoss</div><p class="muted" style="margin-top:1mm;">单项目全流程</p></div>
+  </div>
+  <div class="rule"></div>
+  <div class="grid3">
+    <div>
+      <h3>模板工具</h3>
+      <p>套版出来的东西千篇一律，讲不出产品差异；改一个模块整个版式就崩。</p>
+    </div>
+    <div>
+      <h3>通用 AI 对话</h3>
+      <p>能给你文案和图片，但都是散件。谁做页面、谁拼装、谁验收，仍然是人。</p>
+    </div>
+    <div>
+      <h3>外包团队</h3>
+      <p>质量可控但贵且慢，而且每次都要重新沟通「我卖的是什么」。</p>
+    </div>
+  </div>
+  <p class="lead" style="margin-top:7mm; color:#1b1b17;">真正的缺口不是「生成」，而是<b>从资料到可交付成品的组织能力</b>：谁定方向、谁写文案、谁做页面、谁验收、谁交付。</p>
+  <div class="foot"><span>OneBoss</span><span>02</span></div>
+</section>
+
+<!-- 3 产品介绍 -->
+<section class="page">
+  <div class="eyebrow">02 / 产品介绍</div>
+  <h2 style="margin-top:3mm;">客户只做四件事，其余交给 AI 组织。</h2>
+  <div class="grid2" style="margin-top:4mm; grid-template-columns: 1fr 0.92fr;">
+    <div>
+      <div style="display:grid; grid-template-columns: 9mm 1fr; gap:4mm 3mm; margin-bottom:5mm;">
+        <div class="num" style="font-size:14pt;">1</div><div><h3>选套餐下单</h3><p>三档套餐，微信或支付宝付款，人工核验到账后开工。</p></div>
+        <div class="num" style="font-size:14pt;">2</div><div><h3>填产品资料</h3><p>名称、描述、价格、图片；确认需求简报与「哪些话可以说」。</p></div>
+        <div class="num" style="font-size:14pt;">3</div><div><h3>选一个方向</h3><p>AI 给出 2–3 套独立设计方向，客户挑一个 —— 品味不做代劳。</p></div>
+        <div class="num" style="font-size:14pt;">4</div><div><h3>拿到交付物</h3><p>网站 + 二维码 + 海报 + 文案 + ZIP，全部真实可用。</p></div>
+      </div>
+      <div style="margin-bottom:5mm;"><span class="tag">交互宣传网站</span><span class="tag">海报 1080×1350 / 1080×1080</span><span class="tag">小红书文案</span><span class="tag">ZIP 交付包</span></div>
+      <div class="k" style="margin-bottom:2mm;">产品定价</div>
+      <div class="grid3" style="gap:3mm;">
+        <div class="card" style="padding:3.5mm;"><h3 style="font-size:10pt;">基础</h3><div class="stat" style="font-size:15pt;">¥1.99</div><p class="muted" style="font-size:7.5pt; margin-top:1mm;">1 产品 · 2 海报 · 2 轮修改 · 30 天</p></div>
+        <div class="card" style="padding:3.5mm;"><h3 style="font-size:10pt;">专业</h3><div class="stat" style="font-size:15pt;">¥5.99</div><p class="muted" style="font-size:7.5pt; margin-top:1mm;">5 产品 · 4 海报 · 3 轮修改 · 90 天</p></div>
+        <div class="card" style="padding:3.5mm;"><h3 style="font-size:10pt;">定制</h3><div class="stat" style="font-size:15pt;">人工报价</div><p class="muted" style="font-size:7.5pt; margin-top:1mm;">10 产品 · 6 海报 · 5 轮修改 · 180 天</p></div>
+      </div>
+      <p class="muted" style="margin-top:2mm;">按需加购：产品 ¥0.99 / 海报 ¥0.99 / 修改 ¥0.49。当前为竞赛演示定价，正式定价按人工替代成本测算。</p>
+    </div>
+    <div>
+      <img class="shot" src="./shots/home.png" style="height:64mm;">
+      <img class="shot" src="./shots/checkout.png" style="height:64mm; margin-top:3.5mm; object-position: top left;">
+    </div>
+  </div>
+  <div class="foot"><span>OneBoss</span><span>03</span></div>
+</section>
+
+<!-- 4 架构图 -->
+<section class="page" style="padding:10mm 12mm;">
+  <div class="eyebrow">03 / Agent 组织架构</div>
+  <img class="shot" src="./shots/org.png" style="height:172mm; margin-top:3mm; object-fit: contain; border:0;">
+  <div class="foot"><span>OneBoss</span><span>04</span></div>
+</section>
+
+<!-- 5 职责与决策边界 -->
+<section class="page">
+  <div class="eyebrow">04 / 分工与决策边界</div>
+  <h2 style="margin-top:3mm;">AI 负责「做得出来」，人负责「要不要」和「钱」。</h2>
+  <table style="margin-top:4mm;">
+    <tr><th style="width:16%">Agent</th><th style="width:30%">职责</th><th style="width:27%">输入</th><th style="width:27%">产出</th></tr>
+    <tr><td><b>intake</b><br><span class="muted">产品分析师</span></td><td>把口语描述提炼成「已核实事实」，判定哪些能对外说</td><td>客户填写与上传的资料</td><td>带来源与置信度的事实清单</td></tr>
+    <tr><td><b>design</b><br><span class="muted">AI 创意总监</span></td><td>独立设计 2–3 套方向：配色、字体、版式、页面构图</td><td>事实 + 需求简报</td><td>互相区分的多套设计系统</td></tr>
+    <tr><td><b>generate</b><br><span class="muted">网站设计师</span></td><td>按选定方向产出网站结构、海报规格、小红书文案</td><td>选定方向 + 事实 + 素材</td><td>成品草稿（站点 / 海报 / 文案）</td></tr>
+    <tr><td><b>publish</b><br><span class="muted">发布交付专员</span></td><td>用真实 Chromium 在 375 / 768 / 1280 三个宽度验收；不达标退回</td><td>成品草稿</td><td>可验证的发布版本与验收证据</td></tr>
+    <tr><td><b>delivery</b><br><span class="muted">交付专员</span></td><td>打包 ZIP、生成二维码、登记交付清单</td><td>通过验收的版本</td><td>可交付物</td></tr>
+  </table>
+  <div class="grid2" style="margin-top:7mm;">
+    <div class="card green">
+      <h3>AI 自主决定（4 类）</h3>
+      <ul><li>产品事实取舍：哪句话能说、哪句是没依据的承诺</li><li>设计方向本身：配色、字体、版式、页面结构</li><li>页面与文案的具体写法</li><li>发布前自我验收：不达标就不发布</li></ul>
+    </div>
+    <div class="card accent">
+      <h3>人工必须介入（4 处）</h3>
+      <ul><li>收款核验 — 钱只由人确认</li><li>简报批准 — 交付范围由客户认</li><li>方向选定 — 品味不可替代</li><li>成品验收 — 完成由客户定义</li></ul>
+    </div>
+  </div>
+  <div class="foot"><span>OneBoss</span><span>05</span></div>
+</section>
+
+<!-- 6 客户工作台 -->
+<section class="page">
+  <div class="eyebrow">05 / 客户侧 · 工作台</div>
+  <h2 style="margin-top:3mm;">进度的每一步都来自真实任务记录。</h2>
+  <div class="grid2" style="margin-top:4mm; grid-template-columns: 1.45fr 1fr;">
+    <img class="shot" src="./shots/workspace.png" style="height:118mm;">
+    <div>
+      <img class="shot" src="./shots/creative.png" style="height:60mm;">
+      <div class="card" style="margin-top:4mm;">
+        <h3>为什么进度可信</h3>
+        <ul>
+          <li>左侧 7 个阶段全部由 <span class="mono">agent_runs</span> 推导，不看数组顺序</li>
+          <li>只有 <span class="mono">SUCCEEDED</span> 才算完成，重试不算进展</li>
+          <li>失败会显示具体错误码，而不是笼统的「出错了」</li>
+          <li>需要客户决策时亮橙色，并给出「前往处理」入口</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>OneBoss</span><span>06</span></div>
+</section>
+
+<!-- 7 后台总览 -->
+<section class="page">
+  <div class="eyebrow">06 / 后台 · 经营总览</div>
+  <h2 style="margin-top:3mm;">所有指标以服务端口径为准，待支付不计入收入。</h2>
+  <img class="shot" src="./shots/admin-overview-crop.png" style="height:132mm; margin-top:3mm;">
+  <div class="grid4" style="margin-top:5mm;">
+    <div><div class="k">今日确认到账</div><div class="stat">¥770.38</div></div>
+    <div><div class="k">累计订单</div><div class="stat">19</div></div>
+    <div><div class="k">待支付核验</div><div class="stat">2</div></div>
+    <div><div class="k">待制作放行</div><div class="stat">5</div></div>
+  </div>
+  <div class="foot"><span>OneBoss</span><span>07</span></div>
+</section>
+
+<!-- 8 后台 AI 员工 -->
+<section class="page">
+  <div class="eyebrow">07 / 后台 · AI 员工监控</div>
+  <h2 style="margin-top:3mm;">每个 AI 员工在做什么、花了多少、为什么失败，一眼可见。</h2>
+  <img class="shot" src="./shots/admin-agents-crop.png" style="height:132mm; margin-top:3mm;">
+  <p class="muted" style="margin-top:4mm;">状态必须来自持久化的任务记录，前端不会用动画伪造「正在工作」。运行记录包含模型、token、开始/结束时间与错误摘要 —— 失败是可见的，不是被隐藏的。</p>
+  <div class="foot"><span>OneBoss</span><span>08</span></div>
+</section>
+
+<!-- 9 运营数据 -->
+<section class="page">
+  <div class="eyebrow">08 / 运行数据与成本</div>
+  <h2 style="margin-top:3mm;">竞赛期间的经营流水。</h2>
+  <div class="grid4" style="margin-top:5mm;">
+    <div class="card"><div class="k">订单总数</div><div class="stat">19</div><p class="muted">已支付 14 笔</p></div>
+    <div class="card"><div class="k">成交金额</div><div class="stat">¥786.34</div><p class="muted">模拟成交，测试单价</p></div>
+    <div class="card"><div class="k">AI 任务</div><div class="stat">41</div><p class="muted">成功 25 / 失败 16</p></div>
+    <div class="card"><div class="k">累计 token</div><div class="stat">128,129</div><p class="muted">含重试</p></div>
+  </div>
+  <table style="margin-top:7mm;">
+    <tr><th style="width:22%">角色</th><th>执行次数</th><th>成功</th><th>平均耗时</th><th>token</th><th style="width:30%">说明</th></tr>
+    <tr><td><b>design</b></td><td>18</td><td>11</td><td>84 s（成功）/ 223 s（含重试）</td><td>13,215</td><td>三套方向，含多样性校验</td></tr>
+    <tr><td><b>generate</b></td><td>9</td><td>7</td><td>120 s</td><td>103,909</td><td>站点 + 海报 + 文案</td></tr>
+    <tr><td><b>publish</b></td><td>9</td><td>3</td><td>22 s（成功）</td><td>—</td><td>真实浏览器三宽度验收</td></tr>
+    <tr><td><b>delivery</b></td><td>3</td><td>2</td><td>14 s</td><td>—</td><td>打包与二维码</td></tr>
+    <tr><td><b>intake</b></td><td>2</td><td>2</td><td>40 s</td><td>11,005</td><td>事实提炼</td></tr>
+  </table>
+  <div class="grid2" style="margin-top:6mm;">
+    <div class="card accent"><h3>与传统人工对比</h3><p>设计师 + 文案 + 前端 = 3 人 × 3 天，报价 3000–8000 元、周期 2–3 周。OneBoss 单项目 5–10 分钟，人力仅剩 4 个签字关口。</p></div>
+    <div class="card green"><h3>成本结构</h3><p>成本几乎全部是模型 token：12.8 万 token 支撑 41 次任务、19 笔订单。单项目约消耗 1.6 万 token，即便按商业模型单价上限估算，模型成本也<b>不足 1 元</b>。</p></div>
+  </div>
+  <div class="foot"><span>OneBoss</span><span>09</span></div>
+</section>
+
+<!-- 10 技术与链接 -->
+<section class="page">
+  <div class="eyebrow">09 / 技术栈与链接</div>
+  <h2 style="margin-top:3mm;">技术选择服务于一件事：让 AI 的产出可以被验证。</h2>
+  <div class="grid3" style="margin-top:6mm;">
+    <div class="card"><h3>应用层</h3><p>Next.js 16 App Router + React 19 + TypeScript 严格模式；单一 catch-all API，统一鉴权、限流与幂等。</p></div>
+    <div class="card"><h3>数据层</h3><p>PostgreSQL + 行级安全（RLS），金额以最小货币单位整数存储，客户与租户隔离。</p></div>
+    <div class="card"><h3>AI 与验收</h3><p>小米 MiMo v2.6-pro；结构校验失败带字段反馈重试；Playwright 真实 Chromium 做发布验收，拒绝把装饰动画当交互证据。</p></div>
+  </div>
+  <div class="rule" style="margin:8mm 0;"></div>
+  <div class="grid2">
+    <div>
+      <h3>质量</h3>
+      <ul><li>25 个测试文件 / 214 个用例通过</li><li>类型检查零错误</li><li>所有 AI 任务落库，可回溯到每一次重试</li></ul>
+    </div>
+    <div>
+      <h3>链接</h3>
+      <ul>
+        <li>产品体验：<span class="mono">https://cwforsetsryx.sealoshzh.site</span></li>
+        <li>代码仓库：<span class="mono">https://github.com/duororschm-lgtm/oneboss-ai</span></li>
+        <li>管理员后台：<span class="mono">https://cwforsetsryx.sealoshzh.site/admin</span></li>
+      </ul>
+    </div>
+  </div>
+  <p class="lead" style="margin-top:10mm; color:#1b1b17;">OneBoss 想证明的不是「AI 能生成一张图」，而是<b>一群 AI 能组成一个持续交付的公司</b> —— 有人做分析、有人做设计、有人做验收，而人只决定要不要。</p>
+  <div class="foot"><span>OneBoss · AI 创意生产组织</span><span>10</span></div>
+</section>
+
+</body></html>
