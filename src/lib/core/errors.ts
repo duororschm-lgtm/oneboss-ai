@@ -1,4 +1,11 @@
 export class AppError extends Error {
+  modelDiagnostics?: {
+    requestId?: string;
+    finishReason: string | null;
+    maxCompletionTokens: number;
+    responseChars: number;
+    usage: Record<string, number>;
+  };
   // Schema metadata (field paths + issue codes) for model-feedback retries. Never model values.
   schemaIssues?: { path: string; code: string }[];
   constructor(

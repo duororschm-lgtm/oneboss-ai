@@ -153,10 +153,21 @@ export const DesignSystem = z
       .string()
       .regex(/^#[a-fA-F0-9]{6}$/)
       .optional(),
-    gradientStops: z.array(z.string().regex(/^#[a-fA-F0-9]{6}$/)).min(2).max(4).optional(),
+    gradientStops: z
+      .array(z.string().regex(/^#[a-fA-F0-9]{6}$/))
+      .min(2)
+      .max(4)
+      .optional(),
     gridStyle: z.enum(['editorial', 'asymmetric', 'modular', 'full-bleed']).optional(),
     visualMotif: z
-      .enum(['clean-lines', 'organic-shapes', 'geometric-grid', 'soft-glow', 'bold-blocks', 'fine-details'])
+      .enum([
+        'clean-lines',
+        'organic-shapes',
+        'geometric-grid',
+        'soft-glow',
+        'bold-blocks',
+        'fine-details',
+      ])
       .optional(),
     motionLanguage: z.enum(['calm', 'expressive', 'energetic']).optional(),
     siteBlueprint: SiteBlueprint.optional(),
@@ -224,14 +235,20 @@ export const PosterSpec = z
       .max(50),
     productFactRefs: z.array(Id),
     assetRefs: z.array(Id),
-    textRefs: z.array(Id),
+    textRefs: z
+      .array(Id)
+      .describe(
+        'Only supplied verified fact UUIDs or exact IDs of copy packs present in the sibling copy[] array. Never productId, projectId, posterId, asset IDs, field names, or invented UUIDs.',
+      ),
     qr: z
       .object({
         placement: z.enum(['auto_bottom_right_or_left', 'bottom-right', 'bottom-left']),
         caption: z.string().max(50),
       })
       .strict(),
-    copyPackRef: Id,
+    copyPackRef: Id.describe(
+      'Exact ID of the corresponding copy pack in the sibling copy[] array. Each poster uses a different copy pack.',
+    ),
     factVersion: Revision,
   })
   .strict();
@@ -303,7 +320,9 @@ export const ModelDesignSystem = DesignSystem.extend({
   approvedByClient: z.unknown().optional(),
   factVersion: z.unknown().optional(),
 }).strict();
-export const ModelDesignChoices = z.object({ choices: z.array(ModelDesignSystem).min(2).max(3) }).strict();
+export const ModelDesignChoices = z
+  .object({ choices: z.array(ModelDesignSystem).min(2).max(3) })
+  .strict();
 export type ModelDesignSystemType = z.infer<typeof ModelDesignSystem>;
 export const DeliveryManifest = z
   .object({

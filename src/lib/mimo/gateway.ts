@@ -38,11 +38,12 @@ export async function callMimo<T>(
     },
     { role: 'user', content },
   ];
+  const largeOutput = ['production team', 'revision editor', 'creative director'].includes(role);
+  const maxCompletionTokens = largeOutput ? 32768 : 12000;
   const requestBody: Record<string, unknown> = {
     model,
     messages,
-    temperature: 0.2,
-    max_tokens: 12000,
+    max_completion_tokens: maxCompletionTokens,
   };
   if (!options.tools) requestBody.response_format = { type: 'json_object' };
   if (options.tools) {
@@ -59,14 +60,14 @@ export async function callMimo<T>(
     requestBody.tool_choice = { type: 'function', function: { name: 'read_project_facts' } };
   }
   // 真实观测：design（creative director）单次调用经常 60–150s，90s 会误杀。
-  // 生成类角色给 180s，其余保持 90s。
+  // 大型结构化输出允许 360s，其他长任务 180s，其余 90s；均有界等待。
   const longRunning = [
     'production team',
     'revision editor',
     'creative director',
     'change analyst',
   ].includes(role);
-  const timeout = AbortSignal.timeout(longRunning ? 180000 : 90000);
+  const timeout = AbortSignal.timeout(largeOutput ? 360000 : longRunning ? 180000 : 90000);
   let response: Awaited<ReturnType<typeof proxyFetch>>;
   try {
     response = await proxyFetch(`${base}/chat/completions`, {
@@ -102,6 +103,35 @@ export async function callMimo<T>(
     usage?: unknown;
   };
   const message = data.choices?.[0]?.message;
+  const finish = data.choices?.[0]?.finish_reason;
+  const safeUsage: Record<string, number> = {};
+  if (data.usage && typeof data.usage === 'object') {
+    for (const key of ['prompt_tokens', 'completion_tokens', 'total_tokens']) {
+      const value = (data.usage as Record<string, unknown>)[key];
+      if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
+        safeUsage[key] = value;
+    }
+  }
+  const diagnostics = {
+    requestId:
+      typeof data.id === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(data.id) ? data.id : undefined,
+    finishReason:
+      typeof finish === 'string' &&
+      ['stop', 'length', 'tool_calls', 'content_filter', 'repetition_truncation'].includes(finish)
+        ? finish
+        : null,
+    maxCompletionTokens,
+    responseChars: typeof message?.content === 'string' ? message.content.length : 0,
+    usage: safeUsage,
+  };
+  const failure = (code: string) => {
+    const error = new AppError(code, 502);
+    error.modelDiagnostics = diagnostics;
+    return error;
+  };
+  if (finish === 'length') throw failure('MIMO_OUTPUT_TRUNCATED');
+  if (finish === 'repetition_truncation') throw failure('MIMO_REPETITION_TRUNCATED');
+  if (finish === 'content_filter') throw failure('MIMO_CONTENT_FILTERED');
   if (options.tools) {
     assert(message?.tool_calls?.length, 'MIMO_TOOL_CALLS_MISSING', 502);
     const calls = z.array(NativeToolCall).safeParse(message.tool_calls);
@@ -123,12 +153,16 @@ export async function callMimo<T>(
       requestId: typeof data.id === 'string' ? data.id : undefined,
     };
   }
-  assert(message?.content, 'MIMO_EMPTY_RESPONSE', 502);
+  if (!message?.content) throw failure('MIMO_EMPTY_RESPONSE');
   let parsed: unknown;
   try {
-    parsed = JSON.parse(message.content);
+    // Permit a complete, single JSON code fence; never repair partial JSON,
+    // discard surrounding prose, invent fields or bypass the schema below.
+    const text = message.content.replace(/^\uFEFF/, '').trim();
+    const fence = /^```(?:json)?\s*\r?\n([\s\S]*?)\r?\n```$/i.exec(text);
+    parsed = JSON.parse(fence ? fence[1] : text);
   } catch {
-    throw new AppError('MIMO_INVALID_JSON', 502);
+    throw failure('MIMO_INVALID_JSON');
   }
   const result = schema.safeParse(parsed);
   if (!result.success) {
@@ -137,8 +171,11 @@ export async function callMimo<T>(
       path: issue.path.join('.'),
       code: (issue as { code: string }).code,
     }));
-    console.error(JSON.stringify({ errorClass: 'MIMO_SCHEMA_INVALID', issueCodes: issues.map((i) => i.code) }));
+    console.error(
+      JSON.stringify({ errorClass: 'MIMO_SCHEMA_INVALID', issueCodes: issues.map((i) => i.code) }),
+    );
     const error = new AppError('MIMO_SCHEMA_INVALID', 502);
+    error.modelDiagnostics = diagnostics;
     error.schemaIssues = issues;
     throw error;
   }

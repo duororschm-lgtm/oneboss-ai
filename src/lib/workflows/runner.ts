@@ -174,6 +174,10 @@ export async function runOne(workerId?: string) {
   }, 30000);
   try {
     const context = await snapshot(run);
+    const [previousFailure] =
+      await database()`select error_class from task_events where run_id=${run.id} and error_class is not null order by id desc limit 1`;
+    if (run.role === 'generate' && context.p.status === 'GENERATION_FAILED')
+      await database()`update projects set status='READY_TO_GENERATE' where id=${run.project_id} and exists(select 1 from agent_runs where id=${run.id} and status='RUNNING' and lease_token=${run.lease_token})`;
     const stage =
       run.role === 'generate' || run.role === 'change'
         ? 'model-production'
@@ -209,7 +213,9 @@ export async function runOne(workerId?: string) {
           ) {
             const schemaFeedback = `Your previous JSON violated the output contract. Fix EXACTLY these issues and change nothing else: ${error.schemaIssues
               .map((i) => `${i.path || '(root)'}: ${i.code}`)
-              .join('; ')}. Every field the schema requires must be present. typography values including scale are strings; other numbers are bare JSON numbers.`;
+              .join(
+                '; ',
+              )}. Every field the schema requires must be present. typography values including scale are strings; other numbers are bare JSON numbers.`;
             return attempt(feedback ? `${feedback}\n\n${schemaFeedback}` : schemaFeedback);
           }
           throw error;
@@ -284,7 +290,15 @@ Based on the asset quality assessment:
       assert(context.design && context.brief, 'DESIGN_APPROVAL_REQUIRED');
       const result = await callMimo(Production, 'production team', {
         ...context,
-        previousValidationError: run.error_class ?? null,
+        previousValidationError: previousFailure?.error_class ?? null,
+        referenceContract: {
+          verifiedFactIds: context.facts.map((fact) => fact.id),
+          authorizedAssetIds: context.assets.map((asset) => asset.id),
+          textRefs:
+            'Use only verifiedFactIds or an exact copy[].id created in this response. Do not use product, project, poster or asset IDs, field names or invented references.',
+          copyPackRef:
+            'Must equal its matching copy[].id; each poster references a distinct copy pack.',
+        },
         task: `Generate site, posters and copy referencing only supplied verified facts. BUSINESS CONTRACT: site.pages MUST contain exactly one root page whose slug is the EMPTY STRING "", never "home" or "/". Other page slugs must be unique lowercase a-z, digits or hyphens. Every section type must also appear in site.allowedSectionTypes. Include specs information tabs as a real interaction. If more than one product is supplied, the root page MUST include product-grid with factRefs containing the name, description and price facts of every approved product; the catalog must offer associated details, not unrelated standalone pages. Fact refs must be actual supplied approved fact IDs, never keys or invented UUIDs. Asset refs must be actual supplied asset IDs; return [] when none exist. Set all projectId and factVersion values to the supplied project. Use the approved design version for site and all posters. Generate exactly the brief deliverables.posterCount posters and the same number of copy packs, each poster referencing a different existing copy ID. When brief.deliverables.posterFormats is present, preserve its order and set each canvas to portrait=1080x1350 or square=1080x1080; both formats use independent layout, never crop a rendered image. Every poster MUST set qr.placement to "auto_bottom_right_or_left" unless the customer explicitly named a side in their approved brief; a hard-coded corner can collide with the price block and fail layout QA. If a previousValidationError is supplied, correct that invariant; do not repeat the rejected structure. ${GENERATE_BLUEPRINT_RULES}`,
       });
       usage = result.usage;
@@ -377,12 +391,18 @@ Based on the asset quality assessment:
       await tx`update agent_runs set status='SUCCEEDED',stage='completed',error_class=null,output=${tx.json(output as any)},usage=${tx.json(usage as any)},lease_token=null,lease_until=null,completed_at=now() where id=${run.id}`;
     });
   } catch (error) {
+    if (error instanceof AppError && error.modelDiagnostics)
+      usage = { ...(usage as Record<string, unknown>), providerFailure: error.modelDiagnostics };
     const code =
       error instanceof AppError
         ? error.code
         : error instanceof z.ZodError
           ? 'SCHEMA_INVALID'
-          : run.role === 'publish' ? 'PUBLICATION_FAILED' : run.role === 'delivery' ? 'DELIVERY_FAILED' : 'TASK_FAILED';
+          : run.role === 'publish'
+            ? 'PUBLICATION_FAILED'
+            : run.role === 'delivery'
+              ? 'DELIVERY_FAILED'
+              : 'TASK_FAILED';
     const terminal =
       run.attempt >= run.max_attempts ||
       [
@@ -394,6 +414,10 @@ Based on the asset quality assessment:
         'FACT_APPROVAL_REQUIRED',
         'DESIGN_DIRECTIONS_NOT_DISTINCT',
         'SITE_BLUEPRINT_REQUIRED',
+        'MIMO_CONTENT_FILTERED',
+        'MIMO_HTTP_400',
+        'MIMO_HTTP_401',
+        'MIMO_HTTP_403',
       ].includes(code);
     const [currentStage] =
       await database()`select stage from agent_runs where id=${run.id} and lease_token=${run.lease_token}`;

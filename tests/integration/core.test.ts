@@ -1074,6 +1074,25 @@ describe.sequential('real PostgreSQL business invariants', () => {
       else delete process.env.APP_URL;
     }
   });
+  it('retains safe provider failure diagnostics and feeds the prior error into a generation retry',async()=>{
+    const error=new AppError('MIMO_OUTPUT_TRUNCATED',502);
+    error.modelDiagnostics={finishReason:'length',maxCompletionTokens:32768,responseChars:5000,usage:{completion_tokens:32768}};
+    const model=vi.spyOn(gateway,'callMimo').mockRejectedValue(error);
+    try{
+      const run=await transaction(owner,tx=>core.enqueue(tx,owner,projectId,'generate',{}));
+      await db`update projects set status='GENERATION_FAILED' where id=${projectId}`;
+      await runOne();
+      const [first]=await db`select status,error_class,usage from agent_runs where id=${run.id}`;
+      expect(first.status).toBe('QUEUED');
+      expect(first.usage.providerFailure.finishReason).toBe('length');
+      expect((await db`select status from projects where id=${projectId}`)[0].status).toBe('READY_TO_GENERATE');
+      await db`update agent_runs set next_attempt_at=now(),max_attempts=2 where id=${run.id}`;
+      model.mockRejectedValueOnce(new AppError('MIMO_INVALID_JSON',502));
+      await runOne();
+      expect((model.mock.calls[1][2] as any).previousValidationError).toBe('MIMO_OUTPUT_TRUNCATED');
+      expect((await db`select status from agent_runs where id=${run.id}`)[0].status).toBe('FAILED');
+    }finally{model.mockRestore();}
+  });
   it('binds signed-provider payments to exact merchant, order and amount, idempotently preserving refunds', async () => {
     const keys = generateKeyPairSync('rsa', {
       modulusLength: 2048,

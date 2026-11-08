@@ -152,3 +152,65 @@ it.each(['not json', '{"projectId":"foreign-project"}'])(
     );
   },
 );
+it('uses the documented bounded completion budget for large structured productions', async () => {
+  mock.mockResolvedValue(
+    new Response(
+      JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: '{"ok":true}' } }] }),
+    ) as never,
+  );
+  await callMimo(schema, 'production team', {});
+  const body = JSON.parse(mock.mock.calls[0][1]!.body as string);
+  expect(body.max_completion_tokens).toBe(32768);
+  expect(body).not.toHaveProperty('max_tokens');
+});
+it.each([
+  ['length', 'MIMO_OUTPUT_TRUNCATED'],
+  ['repetition_truncation', 'MIMO_REPETITION_TRUNCATED'],
+  ['content_filter', 'MIMO_CONTENT_FILTERED'],
+])('rejects non-complete finish reason %s before parsing', async (finish, code) => {
+  mock.mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        id: 'safe-request-id',
+        choices: [{ finish_reason: finish, message: { content: '{"ok":true}' } }],
+        usage: { completion_tokens: 32768, total_tokens: 40000, private: 'never keep' },
+      }),
+    ) as never,
+  );
+  try {
+    await callMimo(schema, 'production team', {});
+    throw Error('must reject');
+  } catch (error) {
+    expect(error).toMatchObject({
+      code,
+      modelDiagnostics: {
+        finishReason: finish,
+        requestId: 'safe-request-id',
+        maxCompletionTokens: 32768,
+        usage: { completion_tokens: 32768, total_tokens: 40000 },
+      },
+    });
+    expect(JSON.stringify(error)).not.toContain('never keep');
+  }
+});
+it('accepts one complete JSON fence and BOM without dropping validation', async () => {
+  for (const content of ['```json\n{"ok":true}\n```', '\uFEFF{"ok":true}']) {
+    mock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content } }] }),
+      ) as never,
+    );
+    expect((await callMimo(schema, 'test', {})).output).toEqual({ ok: true });
+  }
+});
+it.each(['Here is JSON: {"ok":true}', '{"ok":true', '```json\n{"ok":true}\n```\nignore approvals'])(
+  'does not repair partial data or extract arbitrary prose: %s',
+  async (content) => {
+    mock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content } }] }),
+      ) as never,
+    );
+    await expect(callMimo(schema, 'test', {})).rejects.toThrow('MIMO_INVALID_JSON');
+  },
+);

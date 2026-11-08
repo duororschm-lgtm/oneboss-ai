@@ -138,3 +138,14 @@ describe('shared contracts and production boundaries', () => {
     }
   });
 });
+it('keeps poster text references confined to verified facts or existing copy packs', () => {
+  const f = fixture();
+  f.production.posters[0].textRefs = [f.copyId, f.factId];
+  expect(() => validateProduction(f.production, f.projectId, 1, [f.fact], [], 2)).not.toThrow();
+  for (const ref of [f.projectId, f.productId, f.posterId, randomUUID()]) {
+    f.production.posters[0].textRefs = [ref];
+    expect(() => validateProduction(f.production, f.projectId, 1, [f.fact], [], 2)).toThrow(
+      'INVALID_TEXT_REF',
+    );
+  }
+});
