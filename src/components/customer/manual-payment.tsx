@@ -43,7 +43,12 @@ export function ManualPayment({
     try {
       await customerApi(`commerce/orders/${order.id}/report-manual-payment`, {
         attemptId: attempt,
-        details: [String(fields.get('details') || ''), fields.get('paidAt') ? `付款时间：${fields.get('paidAt')}` : '', fields.get('transactionRef') ? `交易单号：${fields.get('transactionRef')}` : ''].filter(Boolean).join('\n'),
+        details: [
+          String(fields.get('details') || ''),
+          fields.get('transactionRef') ? `交易单号：${fields.get('transactionRef')}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
       });
       setMessage('付款说明已提交，等待人工核验真实到账；订单尚未确认付款。');
       await onChanged();
@@ -107,7 +112,6 @@ export function ManualPayment({
             保存收款码
           </a>
           <form className="ob-form" onSubmit={report}>
-            <label>付款时间（北京时间）<input type="datetime-local" name="paidAt" /></label>
             <label>交易单号<input name="transactionRef" maxLength={150} /></label>
             <label>
               付款说明
