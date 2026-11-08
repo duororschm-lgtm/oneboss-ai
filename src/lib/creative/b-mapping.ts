@@ -507,6 +507,10 @@ export function mapPoster(input: Parameters<CreativeAdapter['renderPoster']>[0])
   const headline = poster.layers.find(
     (l) => l.type === 'text' && l.factRef && l.role === 'headline',
   );
+  const subhead = poster.layers.find(
+    (l) =>
+      l.type === 'text' && l.factRef && ['subline', 'subhead', 'subtitle'].includes(l.role ?? ''),
+  );
   const result = buildPoster(
     {
       seed,
@@ -525,5 +529,13 @@ export function mapPoster(input: Parameters<CreativeAdapter['renderPoster']>[0])
     },
     poster.canvas.height,
   );
-  return { seed, design, spec: posterSpecSchema.parse(result.spec), warnings: result.warnings };
+  // Respect the approved fact explicitly assigned to the subtitle. The full
+  // product description remains in the seed/site; never truncate it to fit.
+  const spec = posterSpecSchema.parse({
+    ...result.spec,
+    ...(subhead
+      ? { subhead: displayFact(facts.find((f) => f.id === subhead.factRef)!.value) }
+      : {}),
+  });
+  return { seed, design, spec, warnings: result.warnings };
 }

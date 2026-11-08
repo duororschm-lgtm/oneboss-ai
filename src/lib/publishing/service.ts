@@ -47,7 +47,17 @@ export async function approveArtifact(
     facts: context.fs,
     assets: context.assets,
   });
-  assert(qa.pass && qa.issues.length === 0, 'CREATIVE_QA_FAILED', 409);
+  if (!qa.pass || qa.issues.length) {
+    console.error(
+      JSON.stringify({
+        errorClass: 'CREATIVE_QA_FAILED',
+        projectId,
+        revision,
+        issues: qa.issues.filter((issue) => /^[A-Z][A-Z0-9_]{0,79}$/.test(issue)),
+      }),
+    );
+    assert(false, 'CREATIVE_QA_FAILED', 409);
+  }
   return idempotent(
     actor,
     key,

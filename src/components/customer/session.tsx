@@ -99,6 +99,7 @@ const messages: Record<string, string> = {
   DELIVERY_NOT_READY: '交付包还在准备，请稍后刷新。',
   RATE_LIMITED: '操作较频繁，请稍后再试。',
   APPROVAL_REQUIRED: '请先批准当前作品。',
+  CREATIVE_QA_FAILED: '作品已生成，但成品质量检查未通过，暂不能批准。请联系服务方检查排版，无需反复重新生成。',
   BROWSER_VERIFICATION_REQUIRED: '网站交互检查尚未完成，请稍后重试。',
   BROWSER_QA_REQUIRED: '网站交互检查尚未通过，请查看发布任务结果。',
 };

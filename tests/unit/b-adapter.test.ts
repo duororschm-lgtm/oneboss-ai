@@ -192,6 +192,51 @@ it('refuses a poster whose confirmed headline would be silently clipped by the B
   });
   expect(result).toEqual({ pass: false, issues: ['POSTER_HEADLINE_OVERFLOW'] });
 });
+it.each(['subline', 'subhead', 'subtitle'])(
+  'renders the explicit approved %s fact instead of squeezing the full description into it',
+  async (role) => {
+    const f = input();
+    const description = {
+      ...f.fact,
+      id: f.copyId,
+      key: 'description',
+      value: '已确认的完整产品介绍。'.repeat(20),
+    };
+    const model = { ...f.fact, id: f.posterId, key: 'model', value: 'E1 人体工学办公椅' };
+    const facts = [f.fact, description, model];
+    const poster = {
+      ...f.posterInput.poster,
+      productFactRefs: facts.map((fact) => fact.id),
+      layers: [...f.posterInput.poster.layers, { type: 'text' as const, factRef: model.id, role }],
+    };
+    const mapped = mapPoster({ ...f.posterInput, poster, facts });
+    expect(mapped.spec.subhead).toBe(model.value);
+    expect(mapped.seed.products[0].summary).toBe(description.value);
+    const site = structuredClone(f.production.site);
+    site.pages[0].sections[0].factRefs.push(description.id);
+    expect(mapSite({ ...f.siteInput, site, facts }).seed.products[0].summary).toBe(
+      description.value,
+    );
+    const check = (values = facts, p = poster) =>
+      validateProduction({
+        production: { ...f.production, posters: [p] },
+        design: f.design,
+        facts: values,
+        assets: [],
+      });
+    await expect(check()).resolves.toEqual({ pass: true, issues: [] });
+    await expect(check([f.fact, description, { ...model, verified: false }])).resolves.toEqual({
+      pass: false,
+      issues: ['UNAPPROVED_FACT'],
+    });
+    await expect(
+      check([f.fact, description, { ...model, value: '不能被静默裁掉的副标题'.repeat(30) }]),
+    ).resolves.toEqual({ pass: false, issues: ['POSTER_SUBHEAD_OVERFLOW'] });
+    await expect(check(facts, { ...poster, layers: f.posterInput.poster.layers })).resolves.toEqual(
+      { pass: false, issues: ['POSTER_SUBHEAD_OVERFLOW'] },
+    );
+  },
+);
 it('formats approved product prices without mixing service fees or fabricating undisclosed prices', () => {
   expect(
     displayFact({ amountMinor: 18980000, currency: 'CNY', unit: '辆', priceType: 'guide_price' }),
