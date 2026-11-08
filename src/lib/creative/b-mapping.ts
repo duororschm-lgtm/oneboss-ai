@@ -14,6 +14,7 @@ import {
   type Asset,
 } from '../../vendor/creative-b/types/contracts';
 import type { CreativeAdapter } from '../core/creative';
+import { fitPosterSubhead } from './poster-text';
 
 const RenderFact = z.object({
   id: z.uuid(),
@@ -537,5 +538,24 @@ export function mapPoster(input: Parameters<CreativeAdapter['renderPoster']>[0])
       ? { subhead: displayFact(facts.find((f) => f.id === subhead.factRef)!.value) }
       : {}),
   });
+  if (!subhead && !fitPosterSubhead(spec.subhead, spec.layout, poster.canvas.height).fits) {
+    // Legacy/model-defined role labels may be descriptive Chinese text. Use a
+    // whole, already-referenced short fact rather than silently cropping the
+    // full description. Explicit subtitle choices still fail QA if too long.
+    const candidate = poster.layers
+      .filter((layer) => layer.type === 'text' && layer.factRef)
+      .map((layer) => facts.find((fact) => fact.id === layer.factRef)!)
+      .find(
+        (fact) =>
+          typeof fact.value === 'string' &&
+          fact.value.trim().length > 0 &&
+          !['name', 'brand', 'brand_name', 'price', 'contact', 'contact_url'].includes(
+            keyOf(fact.key),
+          ) &&
+          fact.value !== spec.headline &&
+          fitPosterSubhead(fact.value, spec.layout, poster.canvas.height).fits,
+      );
+    if (candidate) spec.subhead = displayFact(candidate.value);
+  }
   return { seed, design, spec, warnings: result.warnings };
 }

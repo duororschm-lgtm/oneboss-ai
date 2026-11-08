@@ -10,6 +10,7 @@ import { mapPoster, mapSite } from './b-mapping';
 import { SiteRenderer } from '../../vendor/creative-b/components/site-renderer/SiteRenderer';
 import { buildPosterSvg, fitText } from '../../vendor/creative-b/lib/creative/poster-renderer/svg';
 import { posterGeometry } from '../../vendor/creative-b/lib/creative/poster-renderer/geometry';
+import { fitPosterSubhead } from './poster-text';
 
 export const renderSite: CreativeAdapter['renderSite'] = (input) => {
   const mapped = mapSite(input);
@@ -62,25 +63,17 @@ function checkText(mapped: ReturnType<typeof mapPoster>) {
     min: mapped.spec.layout === 'bold-editorial' ? 44 : 42,
     maxLines: 3,
   });
-  const subhead = fitText(mapped.spec.subhead, geo.subhead.width, geo.subhead.height, {
-    max: mapped.spec.layout === 'future-grid' ? 27 : 30,
-    min:
-      mapped.spec.layout === 'editorial-premium'
-        ? 22
-        : mapped.spec.layout === 'future-grid'
-          ? 20
-          : 21,
-    maxLines: 2,
-  });
+  const subhead = fitPosterSubhead(
+    mapped.spec.subhead,
+    mapped.spec.layout,
+    mapped.spec.canvas.height,
+  );
   const compact = (value: string) => value.replace(/\s/g, '');
   assert(
     compact(headline.lines.join('')) === compact(mapped.spec.headline),
     'POSTER_HEADLINE_OVERFLOW',
   );
-  assert(
-    compact(subhead.lines.join('')) === compact(mapped.spec.subhead),
-    'POSTER_SUBHEAD_OVERFLOW',
-  );
+  assert(subhead.fits, 'POSTER_SUBHEAD_OVERFLOW');
   assert(mapped.warnings.length === 0, 'POSTER_LAYOUT_CONFLICT');
 }
 async function renderPosterBytes(

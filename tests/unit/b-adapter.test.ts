@@ -13,6 +13,7 @@ import jsQR from 'jsqr';
 import { directionPreview } from '../../src/lib/customer/direction-preview';
 import { inspectPng } from '../../src/lib/delivery/service';
 import * as storage from '../../src/lib/core/storage';
+import { fitPosterSubhead } from '../../src/lib/creative/poster-text';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -245,6 +246,63 @@ it('formats approved product prices without mixing service fees or fabricating u
     displayFact({ amountMinor: null, currency: 'CNY', unit: '件', priceType: 'not_disclosed' }),
   ).toBe('价格未公开');
 });
+it.each([1350, 1080] as const)(
+  'uses a whole referenced short fact with descriptive roles at height %i, keeping full source facts',
+  async (height) => {
+    const f = input();
+    const description = {
+      ...f.fact,
+      id: f.copyId,
+      key: 'description',
+      value: '完整产品介绍不应被塞入一行副标题。'.repeat(20),
+    };
+    const short = { ...f.fact, id: f.posterId, key: 'visual_style', value: '金属质感与几何线条' };
+    const facts = [f.fact, description, short];
+    const poster = {
+      ...f.posterInput.poster,
+      canvas: { width: 1080 as const, height },
+      productFactRefs: facts.map((fact) => fact.id),
+      layers: [
+        ...f.posterInput.poster.layers,
+        { type: 'text' as const, role: '品牌定位说明', factRef: description.id },
+        { type: 'text' as const, role: '主卖点短句', factRef: short.id },
+      ],
+    };
+    const mapped = mapPoster({ ...f.posterInput, poster, facts });
+    expect(mapped.spec.subhead).toBe(short.value);
+    expect(mapped.seed.products[0].summary).toBe(description.value);
+    const check = (p = poster) =>
+      validateProduction({
+        production: { ...f.production, posters: [p] },
+        design: f.design,
+        facts,
+        assets: [],
+      });
+    await expect(check()).resolves.toEqual({ pass: true, issues: [] });
+    // A fitting but unrelated fact in the context is never borrowed.
+    await expect(
+      check({
+        ...poster,
+        productFactRefs: [f.fact.id, description.id],
+        layers: poster.layers.slice(0, 2),
+      }),
+    ).resolves.toEqual({ pass: false, issues: ['POSTER_SUBHEAD_OVERFLOW'] });
+    // Explicit choices are not silently replaced with another fact.
+    await expect(
+      check({
+        ...poster,
+        layers: [...poster.layers, { type: 'text', role: 'subline', factRef: description.id }],
+      }),
+    ).resolves.toEqual({ pass: false, issues: ['POSTER_SUBHEAD_OVERFLOW'] });
+  },
+);
+it.each(['editorial-premium', 'future-grid', 'bold-editorial'] as const)(
+  'rejects a fully wrapped subtitle that exceeds the vertical box in %s',
+  (layout) => {
+    expect(fitPosterSubhead('字'.repeat(50), layout, 1350).fits).toBe(false);
+    expect(fitPosterSubhead('完整短标题', layout, 1350).fits).toBe(true);
+  },
+);
 it('accepts only the exact server-scoped stable public asset route, rejecting other projects and origins', () => {
   vi.stubEnv('APP_URL', 'https://oneboss.example');
   const f = input();
