@@ -6,6 +6,8 @@
 
 客户页面：`/`、`/pricing`、`/checkout`、`/login`、`/dashboard`、`/dashboard/projects/:id/intake|creative|studio|revise|delivery|agents`。平台审核：`/admin`（独立管理员平台），要求已有 `platform_admins` 授权，不自动授予新账户权限。
 
+安全问题请按 [安全策略](SECURITY.md) 私密报告，不要公开提 issue。
+
 ## 本地开发
 
 需要 Node.js 24、npm；数据库为 Supabase Postgres。使用当前 checkout，通常无需新建 worktree。
