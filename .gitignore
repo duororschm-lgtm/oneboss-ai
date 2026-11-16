@@ -161,3 +161,5 @@ vite.config.ts.timestamp-*
 .idea/
 data/
 package-lock.local-backup.json
+# next dev 自动生成的 agent 说明，不属于项目代码
+AGENTS.md
